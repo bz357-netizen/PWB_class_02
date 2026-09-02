@@ -1,0 +1,55 @@
+:root {
+  --bg: #07080a;
+  --bg-panel: #0c0e12;
+  --bg-panel-90: #0c0e12e6;
+  --line: #2a3038;
+  --line-dim: #1a1e24;
+  --text: #c8ced6;
+  --text-dim: #7a828c;
+  --text-bright: #e8ecf0;
+  --accent: #3ee0ff;
+  --accent-dim: #3ee0ff33;
+  --font: ui-monospace, 'IBM Plex Mono', 'SF Mono', Consolas, 'Liberation Mono',
+    monospace;
+  --text-kicker: 10px;
+  --text-title: 18px;
+  --text-panel: 11px;
+  --text-ui: 11px;
+  --text-hint: 10px;
+  --radius: 2px;
+  --inset: 16px;
+  --panel-width: 220px;
+  color-scheme: dark;
+  font-family: var(--font);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+body {
+  min-height: 100svh;
+  color: var(--text);
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+  font-weight: 500;
+}
+
+:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
