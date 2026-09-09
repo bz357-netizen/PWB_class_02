@@ -75,6 +75,9 @@
   top: var(--inset);
   right: var(--inset);
   width: var(--panel-width);
+  max-height: calc(100% - 32px);
+  overflow-x: hidden;
+  overflow-y: auto;
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -83,7 +86,8 @@
   color: var(--text);
 }
 
-.side-panel h2 {
+.side-panel h2,
+.noise-panel h2 {
   margin: 0 0 8px;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--line-dim);
@@ -93,6 +97,65 @@
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--text-bright);
+}
+
+.side-panel h2.panel-sub {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line-dim);
+}
+
+.noise-panel {
+  position: absolute;
+  left: var(--inset);
+  bottom: var(--inset);
+  width: var(--panel-width);
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-panel-90);
+  pointer-events: auto;
+  color: var(--text);
+}
+
+.equation {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+.noise-map {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  margin: 0 0 8px;
+  border: 1px solid var(--line-dim);
+  image-rendering: pixelated;
+}
+
+.sim-maps {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin: 0 0 8px;
+}
+
+.sim-maps figure {
+  margin: 0;
+}
+
+.sim-maps .noise-map {
+  margin: 0;
+}
+
+.sim-maps figcaption {
+  margin: 4px 0 0;
+  font-size: var(--text-kicker);
+  font-weight: 500;
+  line-height: 1.35;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
 }
 
 .panel-note {
@@ -114,6 +177,83 @@
   margin-bottom: 0;
 }
 
+.select-row {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.select-row select {
+  width: 100%;
+  height: 24px;
+  padding: 0 22px 0 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--text-ui);
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  appearance: none;
+  background-color: var(--bg-panel);
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-dim) 50%),
+    linear-gradient(135deg, var(--text-dim) 50%, transparent 50%);
+  background-position:
+    calc(100% - 12px) 10px,
+    calc(100% - 7px) 10px;
+  background-size:
+    5px 5px,
+    5px 5px;
+  background-repeat: no-repeat;
+}
+
+.select-row select:hover,
+.select-row select:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.select-row option {
+  background: var(--bg-panel);
+  color: var(--text);
+}
+
+.layer-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+
+.layer-actions button {
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--text-ui);
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.layer-actions button:hover:not(:disabled),
+.layer-actions button:focus-visible:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.layer-actions button.is-on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.layer-actions button:disabled {
+  color: var(--text-dim);
+  cursor: default;
+}
+
 .slider-meta {
   display: flex;
   align-items: baseline;
@@ -127,6 +267,34 @@
   line-height: 1.35;
   letter-spacing: 0.06em;
   color: var(--text);
+}
+
+.slider-label.has-help {
+  cursor: help;
+  border-bottom: 1px dotted var(--text-dim);
+}
+
+.param-tooltip {
+  position: fixed;
+  z-index: 40;
+  width: max-content;
+  max-width: 220px;
+  padding: 8px 10px;
+  transform: translate(-100%, -50%);
+  border: 1px solid #d8dde3;
+  border-radius: 2px;
+  background: #ffffff;
+  color: #12151a;
+  font-family: var(--font);
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+  pointer-events: none;
+}
+
+.param-tooltip.is-end {
+  transform: translate(0, -50%);
 }
 
 .slider-value {
@@ -199,5 +367,13 @@
     left: var(--inset);
     bottom: var(--inset);
     width: auto;
+    max-height: 42vh;
+  }
+
+  .noise-panel {
+    top: 72px;
+    bottom: auto;
+    width: 148px;
+    padding: 8px;
   }
 }
