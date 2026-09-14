@@ -29,7 +29,11 @@ export const PARAM_HELP = {
   Weather:
     'Changes the sky, fog, and rain. Clear has sharp sunlight. Overcast is gray and soft. Fog hides distance. Rain and Storm wet the mesh and add falling drops.',
   Scenario:
-    'Pick a seasonal simulation that paints maps and the 3D terrace. Forest fire spreads a burn front. Flood season raises water in the valleys. Heavy snow builds a snowpack on high ground. Hydraulic erosion uses D8 flow accumulation and stream-power incision: smooth noise becomes dendritic river networks and sharp ridges.',
+    'Pick a seasonal simulation that paints maps and the 3D terrace. Forest fire spreads a burn front. Flood season raises water in the valleys. Heavy snow builds a snowpack on high ground. Hydraulic erosion uses D8 flow accumulation and stream-power incision. Living settlement marks where villages, roads, and highways would likely grow on this landscape.',
+  Climate:
+    'Environmental rules for living settlement. Arid favors valleys. Alpine stays off the steepest slopes. Tropical and monsoon avoid the wettest low ground. Coastal hugs gentler edges.',
+  Country:
+    'Settlement pattern. Netherlands and the United States lay denser, more gridded roads. Japan and Switzerland follow valleys. Egypt clings to low land. India and China pack more villages. Norway stays sparse along easier coastal grades.',
   Timeline:
     'Where you are in the event. Drag to jump. Press Start to play forward, Stop to pause, Reset to go back to the beginning.',
   'Sharpness k':

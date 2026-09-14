@@ -1,4 +1,5 @@
 import { GRID_SIZE, noiseFingerprint, sampleHeight } from './noise.js'
+import { getLivingMaps } from './livingSim.js'
 
 export const EVENT_SIMS = [
   { id: 'none', label: 'Off' },
@@ -6,6 +7,7 @@ export const EVENT_SIMS = [
   { id: 'flood', label: 'Flood season' },
   { id: 'snow', label: 'Heavy snow' },
   { id: 'hydraulic', label: 'Hydraulic erosion' },
+  { id: 'living', label: 'Living settlement' },
 ]
 
 const SIZE = 64
@@ -294,6 +296,7 @@ export function formatEventTime(event, t) {
   if (event === 'flood') return `Week ${Math.round(u * 12)} / 12`
   if (event === 'snow') return `Hour ${Math.round(u * 48)} / 48`
   if (event === 'hydraulic') return `Pass ${Math.round(u * MAX_HYDRO)} / ${MAX_HYDRO}`
+  if (event === 'living') return `Year ${Math.round(u * 120)} / 120`
   return `${Math.round(u * 100)}%`
 }
 
@@ -359,6 +362,8 @@ export function getEventSimulation(params) {
       ],
     }
   }
+
+  if (event === 'living') return getLivingMaps(params)
 
   if (event !== 'hydraulic') return null
 

@@ -5,6 +5,7 @@ import { createStarfield, makeGlowTexture } from './createMilkyWay.js'
 import { GRID_SIZE, applyNoiseToGrid, noiseFingerprint } from './noise.js'
 import { getDaylight } from './daylight.js'
 import { applyEventToGrid } from './eventSim.js'
+import { getLivingLayout } from './livingSim.js'
 
 export default function GalaxyCanvas({ paramsRef }) {
   const mountRef = useRef(null)
@@ -23,10 +24,10 @@ export default function GalaxyCanvas({ paramsRef }) {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     renderer.setClearColor(0x6f8496, 1)
     renderer.outputColorSpace = THREE.SRGBColorSpace
-    renderer.shadowMap.enabled = true
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap
     renderer.toneMapping = THREE.ACESFilmicToneMapping
-    renderer.toneMappingExposure = 1.05
+    renderer.toneMappingExposure = 1.18
+    renderer.shadowMap.enabled = true
+    renderer.shadowMap.type = THREE.PCFShadowMap
     mount.appendChild(renderer.domElement)
 
     const controls = new OrbitControls(camera, renderer.domElement)
@@ -39,20 +40,26 @@ export default function GalaxyCanvas({ paramsRef }) {
     controls.rotateSpeed = 0.7
     controls.zoomSpeed = 0.85
 
-    const hemi = new THREE.HemisphereLight(0xb8c8d8, 0x2a241c, 0.5)
+    const hemi = new THREE.HemisphereLight(0xc5d4e4, 0x3d4a32, 0.62)
     scene.add(hemi)
-    const ambient = new THREE.AmbientLight(0x8899aa, 0.22)
+    const ambient = new THREE.AmbientLight(0x9aab9c, 0.28)
     scene.add(ambient)
+    const bounce = new THREE.DirectionalLight(0x8fb0c8, 0.28)
+    bounce.position.set(-16, 10, -12)
+    scene.add(bounce)
     const sun = new THREE.DirectionalLight(0xfff1c2, 1.6)
     sun.castShadow = true
-    sun.shadow.mapSize.set(2048, 2048)
+    sun.shadow.mapSize.set(4096, 4096)
+    sun.shadow.radius = 5
+    sun.shadow.blurSamples = 12
     sun.shadow.camera.near = 1
     sun.shadow.camera.far = 90
     sun.shadow.camera.left = -32
     sun.shadow.camera.right = 32
     sun.shadow.camera.top = 32
     sun.shadow.camera.bottom = -32
-    sun.shadow.bias = -0.0008
+    sun.shadow.bias = -0.00025
+    sun.shadow.normalBias = 0.035
     sun.position.set(18, 28, 10)
     scene.add(sun)
     scene.add(sun.target)
@@ -113,12 +120,12 @@ export default function GalaxyCanvas({ paramsRef }) {
 
     const gridMat = new THREE.MeshStandardMaterial({
       vertexColors: true,
-      roughness: 0.88,
-      metalness: 0.02,
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.96,
+      roughness: 0.82,
+      metalness: 0,
+      side: THREE.FrontSide,
       fog: true,
+      dithering: true,
+      flatShading: false,
     })
     const grid = new THREE.Mesh(gridGeom, gridMat)
     grid.castShadow = true
@@ -135,6 +142,119 @@ export default function GalaxyCanvas({ paramsRef }) {
     const lines = new THREE.Mesh(gridGeom, lineMat)
     lines.visible = false
     scene.add(lines)
+
+    const livingRoot = new THREE.Group()
+    scene.add(livingRoot)
+    const hutGeom = new THREE.CylinderGeometry(0.22, 0.3, 0.2, 8)
+    hutGeom.translate(0, 0.1, 0)
+    const roofGeom = new THREE.ConeGeometry(0.34, 0.22, 8)
+    roofGeom.translate(0, 0.28, 0)
+    const hutMat = new THREE.MeshStandardMaterial({
+      color: 0xe2b15a,
+      roughness: 0.72,
+      metalness: 0.04,
+    })
+    const roofMat = new THREE.MeshStandardMaterial({
+      color: 0x8a3b2a,
+      roughness: 0.78,
+      metalness: 0,
+    })
+    const roadGeom = new THREE.BoxGeometry(1, 1, 1)
+    const roadMat = new THREE.MeshStandardMaterial({
+      color: 0x5a4638,
+      roughness: 0.9,
+      metalness: 0,
+    })
+    const hwMat = new THREE.MeshStandardMaterial({
+      color: 0xc5ccd3,
+      roughness: 0.55,
+      metalness: 0.08,
+    })
+    const dummy = new THREE.Object3D()
+    let roadMesh = null
+    let hwMesh = null
+    let livingNetKey = ''
+
+    const clearHuts = () => {
+      for (let i = livingRoot.children.length - 1; i >= 0; i--) {
+        const child = livingRoot.children[i]
+        if (child === roadMesh || child === hwMesh) continue
+        livingRoot.remove(child)
+      }
+    }
+
+    const pathSegments = (paths) => {
+      const segs = []
+      for (const path of paths) {
+        for (let i = 1; i < path.length; i++) segs.push(path[i - 1], path[i])
+      }
+      return segs
+    }
+
+    const writePathMesh = (mesh, segs, width, lift) => {
+      if (!mesh) return
+      const n = (segs.length / 2) | 0
+      mesh.count = n
+      for (let i = 0; i < n; i++) {
+        const a = segs[i * 2]
+        const b = segs[i * 2 + 1]
+        const dx = b.x - a.x
+        const dz = b.z - a.z
+        const len = Math.hypot(dx, dz)
+        dummy.position.set((a.x + b.x) * 0.5, (a.y + b.y) * 0.5 + lift, (a.z + b.z) * 0.5)
+        dummy.rotation.set(0, Math.atan2(dx, dz), 0)
+        dummy.scale.set(width, 0.05, Math.max(0.04, len))
+        dummy.updateMatrix()
+        mesh.setMatrixAt(i, dummy.matrix)
+      }
+      mesh.instanceMatrix.needsUpdate = true
+    }
+
+    const makePathMesh = (mat, maxCount) => {
+      const mesh = new THREE.InstancedMesh(roadGeom, mat, Math.max(1, maxCount))
+      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+      mesh.frustumCulled = false
+      mesh.castShadow = true
+      mesh.receiveShadow = true
+      mesh.count = 0
+      livingRoot.add(mesh)
+      return mesh
+    }
+
+    const syncLiving = (params) => {
+      if (params.simEvent !== 'living') {
+        livingRoot.visible = false
+        return
+      }
+      livingRoot.visible = true
+      const netKey = `${params.climate}|${params.country}|${noiseKey}`
+      if (netKey !== livingNetKey) {
+        livingNetKey = netKey
+        if (roadMesh) livingRoot.remove(roadMesh)
+        if (hwMesh) livingRoot.remove(hwMesh)
+        const finished = getLivingLayout({ ...params, simTime: 1 })
+        roadMesh = makePathMesh(roadMat, pathSegments(finished.roads).length / 2)
+        hwMesh = makePathMesh(hwMat, pathSegments(finished.highways).length / 2)
+        clearHuts()
+        for (const v of finished.villages) {
+          const hut = new THREE.Mesh(hutGeom, hutMat)
+          hut.position.set(v.x, v.y, v.z)
+          hut.scale.setScalar(0.7 + v.size * 2.2)
+          hut.castShadow = true
+          hut.receiveShadow = true
+          const roof = new THREE.Mesh(roofGeom, roofMat)
+          roof.position.copy(hut.position)
+          roof.scale.copy(hut.scale)
+          roof.castShadow = true
+          livingRoot.add(hut)
+          livingRoot.add(roof)
+        }
+      }
+      const layout = getLivingLayout(params)
+      writePathMesh(roadMesh, pathSegments(layout.roads), 0.22, 0.02)
+      writePathMesh(hwMesh, pathSegments(layout.highways), 0.42, 0.035)
+    }
+
     let noiseKey = ''
     let eventKey = ''
 
@@ -143,6 +263,12 @@ export default function GalaxyCanvas({ paramsRef }) {
       if (params.simEvent === 'flood' || params.simEvent === 'hydraulic') weather = 'rain'
       if (params.simEvent === 'snow') weather = 'overcast'
       if (params.simEvent === 'fire') weather = 'storm'
+      if (params.simEvent === 'living') {
+        if (params.climate === 'arid') weather = 'clear'
+        else if (params.climate === 'tropical' || params.climate === 'monsoon') weather = 'rain'
+        else if (params.climate === 'alpine') weather = 'overcast'
+        else if (params.climate === 'coastal') weather = 'fog'
+      }
       const day = getDaylight(params.timeOfDay ?? 12, weather)
       if (params.simEvent === 'fire') {
         day.sky.lerp(new THREE.Color(0x2a140c), 0.45 * (params.simTime ?? 0))
@@ -157,9 +283,12 @@ export default function GalaxyCanvas({ paramsRef }) {
       sun.castShadow = day.shadow
       ambient.intensity = day.ambient
       hemi.intensity = day.hemi
-      hemi.color.copy(day.sky).lerp(new THREE.Color(0xffffff), 0.25)
+      hemi.color.copy(day.sky).lerp(new THREE.Color(0xffffff), 0.35)
+      hemi.groundColor.set(0x3d4a32)
+      bounce.intensity = day.ambient * 0.9
+      bounce.color.copy(day.sky).lerp(new THREE.Color(0xffffff), 0.15)
       scene.fog.color.copy(day.sky)
-      scene.fog.density = day.fogDensity
+      scene.fog.density = Math.max(0.011, day.fogDensity)
       renderer.setClearColor(day.sky, 1)
       fieldMat.opacity = day.starOpacity
       starfield.visible = day.starOpacity > 0.04
@@ -167,8 +296,8 @@ export default function GalaxyCanvas({ paramsRef }) {
       rain.visible = day.rain || snowing
       rainMat.color.set(snowing ? 0xeef4f8 : 0xb7c8d8)
       rainMat.size = snowing ? 0.14 : 0.07
-      gridMat.roughness = snowing ? 0.45 : 0.88 - day.wetness * 0.55
-      gridMat.metalness = 0.02 + day.wetness * 0.12
+      gridMat.roughness = snowing ? 0.5 : 0.82 - day.wetness * 0.28
+      gridMat.metalness = day.wetness * 0.06
       if (day.storm && Math.sin(now * 0.008) > 0.992) {
         ambient.intensity += 1.4
         hemi.intensity += 1.1
@@ -189,7 +318,10 @@ export default function GalaxyCanvas({ paramsRef }) {
     const animate = () => {
       const params = paramsRef.current
       const nextKey = noiseFingerprint(params)
-      const nextEvent = `${params.simEvent}|${(params.simTime ?? 0).toFixed(3)}`
+      const nextEvent =
+        params.simEvent === 'living'
+          ? `living|${params.climate}|${params.country}`
+          : `${params.simEvent}|${(params.simTime ?? 0).toFixed(3)}`
       if (nextKey !== noiseKey || nextEvent !== eventKey) {
         const nextRes = Math.max(2, Math.round(params.resolution ?? 300))
         if (lastSegments !== nextRes) {
@@ -203,11 +335,13 @@ export default function GalaxyCanvas({ paramsRef }) {
         eventKey = nextEvent
         applyNoiseToGrid(gridGeom, params)
         applyEventToGrid(gridGeom, params)
+        livingNetKey = ''
       }
+      syncLiving(params)
       const filled = params.showMesh !== false
       grid.visible = filled
       lines.visible = !filled
-      gridMat.opacity = filled ? 0.96 : 0.7
+      gridMat.opacity = 1
 
       applyEnvironment(params, performance.now())
 
@@ -244,6 +378,13 @@ export default function GalaxyCanvas({ paramsRef }) {
       gridGeom.dispose()
       gridMat.dispose()
       lineMat.dispose()
+      hutGeom.dispose()
+      roofGeom.dispose()
+      hutMat.dispose()
+      roofMat.dispose()
+      roadGeom.dispose()
+      roadMat.dispose()
+      hwMat.dispose()
       renderer.dispose()
       if (renderer.domElement.parentNode === mount) {
         mount.removeChild(renderer.domElement)

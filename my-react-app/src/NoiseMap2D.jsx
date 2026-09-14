@@ -32,9 +32,14 @@ function paletteColor(t, palette) {
     const g = 16 + 226 * u
     return [g, g, g]
   }
-  if (palette === 'drain') {
-    const g = 6 + 249 * Math.pow(u, 0.85)
-    return [g, g, g]
+  if (palette === 'settle') {
+    return [18 + 40 * u, 50 + 140 * u, 22 + 50 * u]
+  }
+  if (palette === 'network') {
+    if (u > 0.85) return [232, 196, 72]
+    if (u > 0.55) return [200, 208, 214]
+    if (u > 0.35) return [92, 70, 52]
+    return [22, 28, 24]
   }
   return [26 + (62 - 26) * u, 30 + (224 - 30) * u, 36 + (255 - 36) * u]
 }
@@ -195,4 +200,5 @@ const EVENT_NOTE = {
   flood: 'water rises in the valleys',
   snow: 'snowpack grows with elevation',
   hydraulic: 'D8 drainage · stream-power channels',
+  living: 'village, road, and highway potential on this land',
 }

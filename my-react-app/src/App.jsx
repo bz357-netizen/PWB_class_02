@@ -14,6 +14,7 @@ import { getParamHelp } from './paramHelp.js'
 import ParamTooltip from './ParamTooltip.jsx'
 import { WEATHER_OPS } from './daylight.js'
 import { EVENT_SIMS, formatEventTime } from './eventSim.js'
+import { CLIMATES, COUNTRIES } from './livingSim.js'
 import './App.css'
 
 const PLANE_RESOLUTIONS = [95, 300, 500, 1000]
@@ -26,6 +27,8 @@ const initialParams = {
   simEvent: 'none',
   simPlaying: false,
   simTime: 0,
+  climate: 'temperate',
+  country: 'japan',
   layers: [
     createNoiseLayer({
       name: 'Base',
@@ -38,11 +41,11 @@ const initialParams = {
     createNoiseLayer({
       name: 'Detail',
       equation: 'value-fbm',
-      frequency: 0.22,
-      amplitude: 0.85,
-      octaves: 5,
-      persistence: 0.45,
-      mix: 0.7,
+      frequency: 0.14,
+      amplitude: 0.55,
+      octaves: 3,
+      persistence: 0.32,
+      mix: 0.45,
       blend: 'add',
       offsetX: 8,
       offsetZ: -4,
@@ -50,10 +53,10 @@ const initialParams = {
     createNoiseLayer({
       name: 'Ridges',
       equation: 'ridged-fbm',
-      frequency: 0.14,
-      amplitude: 1.35,
+      frequency: 0.11,
+      amplitude: 1.05,
       octaves: 2,
-      mix: 0.55,
+      mix: 0.38,
       blend: 'max',
       shape: 'ridged',
       offsetX: -12,
@@ -231,7 +234,24 @@ function App() {
           />
 
           <h2 className="panel-sub">Simulation map</h2>
-          <p className="panel-note">Seasonal event or hydraulic erosion on the terrace</p>
+          <p className="panel-note">Seasonal event, erosion, or living settlement</p>
+          <div className="layer-actions">
+            <button
+              type="button"
+              className={params.simEvent === 'living' ? 'is-on' : ''}
+              onClick={() => {
+                const on = params.simEvent !== 'living'
+                commit({
+                  ...params,
+                  simEvent: on ? 'living' : 'none',
+                  simPlaying: false,
+                  simTime: 0,
+                })
+              }}
+            >
+              Living
+            </button>
+          </div>
           <Select
             label="Scenario"
             value={params.simEvent}
@@ -245,6 +265,29 @@ function App() {
             }}
             options={EVENT_SIMS}
           />
+          {params.simEvent === 'living' ? (
+            <>
+              <Select
+                label="Climate"
+                value={params.climate}
+                onChange={bind('climate')}
+                options={CLIMATES}
+              />
+              <Select
+                label="Country"
+                value={params.country}
+                onChange={(value) => {
+                  const match = COUNTRIES.find((item) => item.id === value)
+                  commit({
+                    ...params,
+                    country: value,
+                    climate: match?.climate ?? params.climate,
+                  })
+                }}
+                options={COUNTRIES}
+              />
+            </>
+          ) : null}
           {params.simEvent !== 'none' ? (
             <>
               <div className="layer-actions">

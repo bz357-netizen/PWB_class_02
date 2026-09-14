@@ -524,23 +524,82 @@ export function sampleNormalized(x, z, params) {
 export function applyNoiseToGrid(geometry, params) {
   const positions = geometry.attributes.position
   const colors = geometry.attributes.color
+  const count = positions.count
+  const cols = Math.round(Math.sqrt(count))
+  const rows = cols
+  const segs = Math.max(1, cols - 1)
+  const amp = stackedAmplitude(params)
+  const heights = new Float32Array(count)
 
-  for (let i = 0; i < positions.count; i++) {
-    const x = positions.getX(i)
-    const z = positions.getZ(i)
-    const y = sampleHeight(x, z, params)
-    positions.setY(i, y)
+  for (let i = 0; i < count; i++) {
+    heights[i] = sampleHeight(positions.getX(i), positions.getZ(i), params)
+  }
 
-    const t = Math.min(
-      1,
-      Math.max(0, (y / stackedAmplitude(params)) * 0.5 + 0.5),
-    )
-    colors.setXYZ(
-      i,
-      (26 + (62 - 26) * t) / 255,
-      (30 + (224 - 30) * t) / 255,
-      (36 + (255 - 36) * t) / 255,
-    )
+  const passes = segs >= 700 ? 4 : segs >= 400 ? 3 : segs >= 220 ? 2 : 1
+  const lambda = segs >= 700 ? 0.58 : segs >= 400 ? 0.48 : segs >= 220 ? 0.36 : 0.22
+  const next = new Float32Array(count)
+  for (let p = 0; p < passes; p++) {
+    for (let j = 0; j < rows; j++) {
+      for (let i = 0; i < cols; i++) {
+        const k = j * cols + i
+        if (i === 0 || j === 0 || i === cols - 1 || j === rows - 1) {
+          next[k] = heights[k]
+          continue
+        }
+        const avg =
+          (heights[k] * 4 +
+            heights[k - 1] +
+            heights[k + 1] +
+            heights[k - cols] +
+            heights[k + cols] +
+            heights[k - cols - 1] * 0.5 +
+            heights[k - cols + 1] * 0.5 +
+            heights[k + cols - 1] * 0.5 +
+            heights[k + cols + 1] * 0.5) /
+          10
+        next[k] = heights[k] * (1 - lambda) + avg * lambda
+      }
+    }
+    heights.set(next)
+  }
+
+  const cell = GRID_SIZE / segs
+  const grass = [0.31, 0.46, 0.28]
+  const moss = [0.22, 0.38, 0.3]
+  const soil = [0.45, 0.36, 0.24]
+  const rock = [0.4, 0.4, 0.38]
+  const peak = [0.72, 0.74, 0.7]
+
+  for (let j = 0; j < rows; j++) {
+    for (let i = 0; i < cols; i++) {
+      const k = j * cols + i
+      const y = heights[k]
+      positions.setY(k, y)
+      const i0 = Math.max(1, Math.min(cols - 2, i))
+      const j0 = Math.max(1, Math.min(rows - 2, j))
+      const k0 = j0 * cols + i0
+      const slope =
+        Math.hypot(heights[k0 + 1] - heights[k0 - 1], heights[k0 + cols] - heights[k0 - cols]) /
+        (2 * cell)
+      const elev = Math.min(1, Math.max(0, (y / amp) * 0.5 + 0.5))
+      const steep = Math.min(1, slope * 1.15)
+      const tGrass = 1 - steep
+      let r = moss[0] * (1 - elev) + grass[0] * elev
+      let g = moss[1] * (1 - elev) + grass[1] * elev
+      let b = moss[2] * (1 - elev) + grass[2] * elev
+      r = r * tGrass + soil[0] * steep
+      g = g * tGrass + soil[1] * steep
+      b = b * tGrass + soil[2] * steep
+      const stone = Math.min(1, steep * steep * 0.85 + Math.max(0, elev - 0.7) * 1.4)
+      r = r * (1 - stone) + rock[0] * stone
+      g = g * (1 - stone) + rock[1] * stone
+      b = b * (1 - stone) + rock[2] * stone
+      const snow = Math.max(0, (elev - 0.84) / 0.16) * (1 - steep * 0.55)
+      r = r * (1 - snow) + peak[0] * snow
+      g = g * (1 - snow) + peak[1] * snow
+      b = b * (1 - snow) + peak[2] * snow
+      colors.setXYZ(k, r, g, b)
+    }
   }
 
   positions.needsUpdate = true
