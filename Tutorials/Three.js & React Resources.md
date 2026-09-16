@@ -126,10 +126,13 @@ Do **not** start all of these in week one.
 
 | Note | Topic |
 |---|---|
-| `Tutorials/Installing React.md` | Node, npm, Vite, `npm run dev` |
-| `Tutorials/Downloading Three.js.md` | `npm install three`, CDN, zip |
-| `Tutorials/Git & Github 101.md` | Save and share the project |
-| `STYLE GUIDE.md` | HUD look: dark, small type, one accent |
+| [[Installing React]] | Node, npm, Vite, `npm run dev` |
+| [[Downloading Three.js]] | `npm install three`, CDN, zip |
+| [[Git & Github 101]] | Save and share the project |
+| [[STYLE GUIDE]] | HUD look: dark, small type, one accent |
+| [[Noise field]] | App overview (this project) |
+| [[Process]] | Slider → mesh pipeline |
+| [[Script map]] | What each `src/` file does |
 
 ---
 

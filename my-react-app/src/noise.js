@@ -521,6 +521,38 @@ export function sampleNormalized(x, z, params) {
   return clamp(sampleHeight(x, z, params) / stackedAmplitude(params), -1, 1)
 }
 
+function mix3(a, b, t) {
+  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]
+}
+
+/** Illustration-style hillside: mint valleys, cream groves, deep leaf ridges. */
+export function landColor(elev, steep, x, z) {
+  const mint = [0.82, 0.92, 0.78]
+  const sage = [0.55, 0.78, 0.48]
+  const leaf = [0.32, 0.64, 0.34]
+  const canopy = [0.16, 0.48, 0.24]
+  const fold = [0.1, 0.32, 0.16]
+  const cream = [0.96, 0.9, 0.62]
+  const pale = [0.9, 0.95, 0.84]
+
+  let rgb
+  if (elev < 0.22) rgb = mix3(pale, sage, elev / 0.22)
+  else if (elev < 0.48) rgb = mix3(sage, leaf, (elev - 0.22) / 0.26)
+  else if (elev < 0.72) rgb = mix3(leaf, canopy, (elev - 0.48) / 0.24)
+  else rgb = mix3(canopy, fold, Math.min(1, (elev - 0.72) / 0.28))
+
+  const grove = perlin2(x * 0.08, z * 0.08) * 0.5 + 0.5
+  const speck = perlin2(x * 0.38 + 9.1, z * 0.38 - 4.3) * 0.5 + 0.5
+  const bloom =
+    grove > 0.46 && steep < 0.48 && elev > 0.16 && elev < 0.78
+      ? Math.min(1, (grove - 0.46) / 0.26) * (1 - steep * 0.8)
+      : 0
+  rgb = mix3(rgb, cream, bloom * (0.55 + speck * 0.35))
+  rgb = mix3(rgb, leaf, Math.max(0, speck - 0.42) * 0.35)
+  rgb = mix3(rgb, fold, Math.min(1, steep * 0.7))
+  return rgb
+}
+
 export function applyNoiseToGrid(geometry, params) {
   const positions = geometry.attributes.position
   const colors = geometry.attributes.color
@@ -564,16 +596,13 @@ export function applyNoiseToGrid(geometry, params) {
   }
 
   const cell = GRID_SIZE / segs
-  const grass = [0.31, 0.46, 0.28]
-  const moss = [0.22, 0.38, 0.3]
-  const soil = [0.45, 0.36, 0.24]
-  const rock = [0.4, 0.4, 0.38]
-  const peak = [0.72, 0.74, 0.7]
 
   for (let j = 0; j < rows; j++) {
     for (let i = 0; i < cols; i++) {
       const k = j * cols + i
       const y = heights[k]
+      const x = positions.getX(k)
+      const z = positions.getZ(k)
       positions.setY(k, y)
       const i0 = Math.max(1, Math.min(cols - 2, i))
       const j0 = Math.max(1, Math.min(rows - 2, j))
@@ -583,21 +612,7 @@ export function applyNoiseToGrid(geometry, params) {
         (2 * cell)
       const elev = Math.min(1, Math.max(0, (y / amp) * 0.5 + 0.5))
       const steep = Math.min(1, slope * 1.15)
-      const tGrass = 1 - steep
-      let r = moss[0] * (1 - elev) + grass[0] * elev
-      let g = moss[1] * (1 - elev) + grass[1] * elev
-      let b = moss[2] * (1 - elev) + grass[2] * elev
-      r = r * tGrass + soil[0] * steep
-      g = g * tGrass + soil[1] * steep
-      b = b * tGrass + soil[2] * steep
-      const stone = Math.min(1, steep * steep * 0.85 + Math.max(0, elev - 0.7) * 1.4)
-      r = r * (1 - stone) + rock[0] * stone
-      g = g * (1 - stone) + rock[1] * stone
-      b = b * (1 - stone) + rock[2] * stone
-      const snow = Math.max(0, (elev - 0.84) / 0.16) * (1 - steep * 0.55)
-      r = r * (1 - snow) + peak[0] * snow
-      g = g * (1 - snow) + peak[1] * snow
-      b = b * (1 - snow) + peak[2] * snow
+      const [r, g, b] = landColor(elev, steep, x, z)
       colors.setXYZ(k, r, g, b)
     }
   }

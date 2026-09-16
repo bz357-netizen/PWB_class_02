@@ -9,7 +9,7 @@
   --text-bright: #e8ecf0;
   --accent: #3ee0ff;
   --accent-dim: #3ee0ff33;
-  --font: ui-monospace, 'IBM Plex Mono', 'SF Mono', Consolas, 'Liberation Mono',
+  --font: 'IBM Plex Mono', ui-monospace, 'SF Mono', Consolas, 'Liberation Mono',
     monospace;
   --text-kicker: 10px;
   --text-title: 18px;
@@ -19,6 +19,7 @@
   --radius: 2px;
   --inset: 16px;
   --panel-width: 220px;
+  --map-width: 360px;
   color-scheme: dark;
   font-family: var(--font);
 }

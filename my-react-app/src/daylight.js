@@ -28,10 +28,10 @@ export function getDaylight(hour, weather) {
     Math.cos(elevation) * Math.sin(azimuth),
   ).normalize()
 
-  const night = new THREE.Color(0x07080a)
-  const dawn = new THREE.Color(0x2a1a18)
-  const daySky = new THREE.Color(0x6f8496)
-  const dusk = new THREE.Color(0x24141c)
+  const night = new THREE.Color(0x1a2420)
+  const dawn = new THREE.Color(0xf0e6d0)
+  const daySky = new THREE.Color(0xeef6ec)
+  const dusk = new THREE.Color(0xd8c4b0)
   let sky
   if (h < 5.5 || h > 20.5) sky = night
   else if (h < 8) sky = lerpColor(dawn, daySky, (h - 5.5) / 2.5)
@@ -39,16 +39,16 @@ export function getDaylight(hour, weather) {
   else if (h < 20.5) sky = lerpColor(daySky, dusk, (h - 16.5) / 4)
   else sky = night
 
-  const sunDay = new THREE.Color(0xfff1c2)
-  const sunDawn = new THREE.Color(0xff8a4a)
+  const sunDay = new THREE.Color(0xfff6e0)
+  const sunDawn = new THREE.Color(0xffc48a)
   let sunColor = sunDay
   if (h < 7.5 || h > 17.5) sunColor = sunDawn
-  if (!isDay) sunColor = new THREE.Color(0xa8c4ff)
+  if (!isDay) sunColor = new THREE.Color(0xb8d4c4)
 
-  let sunIntensity = isDay ? 0.35 + elevation * 1.8 : 0.08
-  let ambient = isDay ? 0.22 : 0.06
-  let hemi = isDay ? 0.45 : 0.12
-  let fogDensity = isDay ? 0.008 : 0.018
+  let sunIntensity = isDay ? 0.38 + elevation * 1.35 : 0.08
+  let ambient = isDay ? 0.3 : 0.08
+  let hemi = isDay ? 0.52 : 0.14
+  let fogDensity = isDay ? 0.0035 : 0.016
   let shadow = isDay
   let rain = false
   let wetness = 0
@@ -58,23 +58,23 @@ export function getDaylight(hour, weather) {
     sunIntensity *= 0.18
     ambient += 0.28
     hemi += 0.2
-    sky.lerp(new THREE.Color(0x5a646e), 0.55)
-    sunColor.lerp(new THREE.Color(0xc8d0d6), 0.7)
-    fogDensity = 0.016
+    sky.lerp(new THREE.Color(0xc5d4c4), 0.55)
+    sunColor.lerp(new THREE.Color(0xd8e0d4), 0.7)
+    fogDensity = 0.01
     shadow = false
     starOpacity *= 0.15
   } else if (weather === 'fog') {
     sunIntensity *= 0.25
     ambient += 0.18
-    sky.lerp(new THREE.Color(0x8a9198), 0.5)
-    fogDensity = 0.045
+    sky.lerp(new THREE.Color(0xdce8dc), 0.5)
+    fogDensity = 0.028
     shadow = false
     starOpacity *= 0.2
   } else if (weather === 'rain') {
     sunIntensity *= 0.35
     ambient += 0.12
-    sky.lerp(new THREE.Color(0x3a4450), 0.45)
-    fogDensity = 0.022
+    sky.lerp(new THREE.Color(0x8aa090), 0.45)
+    fogDensity = 0.014
     rain = true
     wetness = 0.7
     starOpacity *= 0.25

@@ -15,17 +15,17 @@ export default function GalaxyCanvas({ paramsRef }) {
     if (!mount) return
 
     const scene = new THREE.Scene()
-    scene.fog = new THREE.FogExp2(0x6f8496, 0.01)
+    scene.fog = new THREE.FogExp2(0xeef6ec, 0.005)
 
     const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 200)
     camera.position.set(0, 14, 22)
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-    renderer.setClearColor(0x6f8496, 1)
+    renderer.setClearColor(0xeef6ec, 1)
     renderer.outputColorSpace = THREE.SRGBColorSpace
     renderer.toneMapping = THREE.ACESFilmicToneMapping
-    renderer.toneMappingExposure = 1.18
+    renderer.toneMappingExposure = 0.98
     renderer.shadowMap.enabled = true
     renderer.shadowMap.type = THREE.PCFShadowMap
     mount.appendChild(renderer.domElement)
@@ -40,11 +40,11 @@ export default function GalaxyCanvas({ paramsRef }) {
     controls.rotateSpeed = 0.7
     controls.zoomSpeed = 0.85
 
-    const hemi = new THREE.HemisphereLight(0xc5d4e4, 0x3d4a32, 0.62)
+    const hemi = new THREE.HemisphereLight(0xf4faf2, 0x5e9a58, 0.72)
     scene.add(hemi)
-    const ambient = new THREE.AmbientLight(0x9aab9c, 0.28)
+    const ambient = new THREE.AmbientLight(0xdcefd4, 0.4)
     scene.add(ambient)
-    const bounce = new THREE.DirectionalLight(0x8fb0c8, 0.28)
+    const bounce = new THREE.DirectionalLight(0xcfe8c8, 0.32)
     bounce.position.set(-16, 10, -12)
     scene.add(bounce)
     const sun = new THREE.DirectionalLight(0xfff1c2, 1.6)
@@ -120,7 +120,7 @@ export default function GalaxyCanvas({ paramsRef }) {
 
     const gridMat = new THREE.MeshStandardMaterial({
       vertexColors: true,
-      roughness: 0.82,
+      roughness: 0.94,
       metalness: 0,
       side: THREE.FrontSide,
       fog: true,
@@ -283,12 +283,12 @@ export default function GalaxyCanvas({ paramsRef }) {
       sun.castShadow = day.shadow
       ambient.intensity = day.ambient
       hemi.intensity = day.hemi
-      hemi.color.copy(day.sky).lerp(new THREE.Color(0xffffff), 0.35)
-      hemi.groundColor.set(0x3d4a32)
-      bounce.intensity = day.ambient * 0.9
-      bounce.color.copy(day.sky).lerp(new THREE.Color(0xffffff), 0.15)
+      hemi.color.copy(day.sky).lerp(new THREE.Color(0xffffff), 0.45)
+      hemi.groundColor.set(0x5e9a58)
+      bounce.intensity = day.ambient * 0.85
+      bounce.color.copy(day.sky).lerp(new THREE.Color(0xe8f4dc), 0.2)
       scene.fog.color.copy(day.sky)
-      scene.fog.density = Math.max(0.011, day.fogDensity)
+      scene.fog.density = day.fogDensity
       renderer.setClearColor(day.sky, 1)
       fieldMat.opacity = day.starOpacity
       starfield.visible = day.starOpacity > 0.04
@@ -296,7 +296,7 @@ export default function GalaxyCanvas({ paramsRef }) {
       rain.visible = day.rain || snowing
       rainMat.color.set(snowing ? 0xeef4f8 : 0xb7c8d8)
       rainMat.size = snowing ? 0.14 : 0.07
-      gridMat.roughness = snowing ? 0.5 : 0.82 - day.wetness * 0.28
+      gridMat.roughness = snowing ? 0.55 : 0.94 - day.wetness * 0.22
       gridMat.metalness = day.wetness * 0.06
       if (day.storm && Math.sin(now * 0.008) > 0.992) {
         ambient.intensity += 1.4

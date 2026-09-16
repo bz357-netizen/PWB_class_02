@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import GalaxyCanvas from './GalaxyCanvas.jsx'
+import VoxelCanvas from './VoxelCanvas.jsx'
 import NoiseMap2D from './NoiseMap2D.jsx'
 import {
   BLEND_OPS,
@@ -18,9 +19,11 @@ import { CLIMATES, COUNTRIES } from './livingSim.js'
 import './App.css'
 
 const PLANE_RESOLUTIONS = [95, 300, 500, 1000]
+const VOXEL_RESOLUTIONS = [24, 32, 48, 64]
 
 const initialParams = {
   resolution: 300,
+  voxelCells: 48,
   showMesh: true,
   timeOfDay: 12,
   weather: 'clear',
@@ -108,6 +111,29 @@ function Select({ label, value, onChange, options, helpKey }) {
   )
 }
 
+function PanelSection({ title, note, defaultOpen = true, children }) {
+  const [open, setOpen] = useState(defaultOpen)
+
+  return (
+    <details
+      className="panel-section"
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <summary>{title}</summary>
+      {note ? <p className="panel-note">{note}</p> : null}
+      {children}
+    </details>
+  )
+}
+
+function formatClock(value) {
+  const wrapped = ((value % 24) + 24) % 24
+  const hours = Math.floor(wrapped)
+  const mins = Math.round((wrapped - hours) * 60) % 60
+  return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`
+}
+
 function App() {
   const paramsRef = useRef({
     ...initialParams,
@@ -115,6 +141,23 @@ function App() {
   })
   const [params, setParams] = useState(initialParams)
   const [selected, setSelected] = useState(0)
+  const [view, setView] = useState(() =>
+    typeof window !== 'undefined' && window.location.hash === '#voxel' ? 'voxel' : 'field',
+  )
+
+  useEffect(() => {
+    const onHash = () => {
+      setView(window.location.hash === '#voxel' ? 'voxel' : 'field')
+    }
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
+
+  const openView = (next) => {
+    setView(next)
+    const hash = next === 'voxel' ? '#voxel' : '#field'
+    if (window.location.hash !== hash) window.location.hash = hash
+  }
 
   useEffect(() => {
     if (!params.simPlaying || params.simEvent === 'none') return undefined
@@ -185,6 +228,8 @@ function App() {
   const layer = params.layers[selected] ?? params.layers[0]
   const shapeOp = getShapeOp(layer.shape)
   const noiseEq = getNoiseEquation(layer.equation)
+  const weatherLabel =
+    WEATHER_OPS.find((item) => item.id === params.weather)?.label ?? params.weather
   const layerOptions = params.layers.map((item, index) => ({
     id: String(index),
     label: `${index + 1} · ${item.name}`,
@@ -192,26 +237,68 @@ function App() {
 
   return (
     <div className="app">
-      <GalaxyCanvas paramsRef={paramsRef} />
+      {view === 'voxel' ? (
+        <VoxelCanvas paramsRef={paramsRef} />
+      ) : (
+        <GalaxyCanvas paramsRef={paramsRef} />
+      )}
 
       <div className="hud">
         <header className="title-block">
           <p className="kicker">
-            <span className="tick" aria-hidden="true" />
+            <span className="tick is-live" aria-hidden="true" />
             PWB Class
           </p>
-          <h1>Noise field</h1>
-          <p className="hint">Drag to orbit · Mesh shows sun and shadow</p>
+          <h1>{view === 'voxel' ? 'Voxel terrain' : 'Noise field'}</h1>
+          <p className="hint">
+            {view === 'voxel'
+              ? 'Drag to orbit · Cubes stack to the noise height'
+              : 'Drag to orbit · Mesh shows sun and shadow'}
+          </p>
+          <nav className="view-tabs" aria-label="Scene">
+            <button
+              type="button"
+              className={view === 'field' ? 'is-on' : ''}
+              onClick={() => openView('field')}
+            >
+              Field
+            </button>
+            <button
+              type="button"
+              className={view === 'voxel' ? 'is-on' : ''}
+              onClick={() => openView('voxel')}
+            >
+              Voxel
+            </button>
+          </nav>
+          <p className="telemetry">
+            <span>
+              T <b>{formatClock(params.timeOfDay)}</b>
+            </span>
+            <span>
+              WX <b>{weatherLabel}</b>
+            </span>
+            <span>
+              LYR <b>{params.layers.length}</b>
+            </span>
+            <span>
+              RES{' '}
+              <b>
+                {view === 'voxel'
+                  ? Math.round(params.voxelCells)
+                  : Math.round(params.resolution)}
+              </b>
+            </span>
+          </p>
         </header>
 
         <NoiseMap2D params={params} selected={selected} />
 
-        <aside className="side-panel" aria-label="Scene controls">
+        <aside className="side-panel panel-frame" aria-label="Scene controls">
           <h2>Controls</h2>
           <p className="panel-note">Hover a label for help.</p>
 
-          <h2 className="panel-sub">Daylight</h2>
-          <p className="panel-note">Time and weather on the terrace</p>
+          <PanelSection title="Daylight" note="Time and weather on the terrace">
           <Slider
             label="Time of day"
             min={0}
@@ -219,12 +306,7 @@ function App() {
             step={0.05}
             value={params.timeOfDay}
             onChange={bind('timeOfDay')}
-            format={(value) => {
-              const wrapped = ((value % 24) + 24) % 24
-              const hours = Math.floor(wrapped)
-              const mins = Math.round((wrapped - hours) * 60) % 60
-              return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`
-            }}
+            format={formatClock}
           />
           <Select
             label="Weather"
@@ -232,9 +314,14 @@ function App() {
             onChange={bind('weather')}
             options={WEATHER_OPS}
           />
+          </PanelSection>
 
-          <h2 className="panel-sub">Simulation map</h2>
-          <p className="panel-note">Seasonal event, erosion, or living settlement</p>
+          {view === 'field' ? (
+          <PanelSection
+            title="Simulation"
+            note="Seasonal event, erosion, or living settlement"
+            defaultOpen={params.simEvent !== 'none'}
+          >
           <div className="layer-actions">
             <button
               type="button"
@@ -323,15 +410,23 @@ function App() {
               />
             </>
           ) : null}
+          </PanelSection>
+          ) : null}
 
-          <h2 className="panel-sub">Layers</h2>
-          <p className="panel-note">Each layer has its own equation</p>
-          <Select
-            label="Edit layer"
-            value={String(selected)}
-            onChange={(value) => setSelected(Number(value))}
-            options={layerOptions}
-          />
+          <PanelSection title="Layers" note="Each layer has its own equation">
+          <div className="btn-row layer-index">
+            {layerOptions.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                className={String(selected) === option.id ? 'is-on' : ''}
+                onClick={() => setSelected(Number(option.id))}
+              >
+                {Number(option.id) + 1}
+              </button>
+            ))}
+          </div>
+          <p className="panel-note">{layer.name}</p>
           <div className="layer-actions">
             <button
               type="button"
@@ -362,9 +457,9 @@ function App() {
             onChange={updateLayer('blend')}
             options={BLEND_OPS}
           />
+          </PanelSection>
 
-          <h2 className="panel-sub">Noise</h2>
-          <p className="panel-note">{layer.name} equation</p>
+          <PanelSection title="Noise" note={`${layer.name} equation`}>
           <Select
             label="Equation"
             value={layer.equation || 'perlin-fbm'}
@@ -445,9 +540,9 @@ function App() {
             onChange={updateLayer('offsetZ')}
             format={(value) => value.toFixed(1)}
           />
+          </PanelSection>
 
-          <h2 className="panel-sub">Shape</h2>
-          <p className="panel-note">Remap n before × A</p>
+          <PanelSection title="Shape" note="Remap n before × A" defaultOpen={false}>
           <Select
             label="Operation"
             value={layer.shape}
@@ -468,9 +563,51 @@ function App() {
               helpKey={slider.key}
             />
           ))}
+          </PanelSection>
 
-          <h2 className="panel-sub">Grid</h2>
-          <p className="panel-note">Mesh density on the xz plane</p>
+          {view === 'voxel' ? (
+          <PanelSection title="Voxels" note="Cube grid from the same noise height">
+          <Slider
+            label="Voxel cells"
+            min={16}
+            max={64}
+            step={1}
+            value={params.voxelCells}
+            onChange={bind('voxelCells')}
+            format={(value) => String(Math.round(value))}
+          />
+          <div className="btn-row btn-row-4">
+            {VOXEL_RESOLUTIONS.map((cells) => (
+              <button
+                key={cells}
+                type="button"
+                className={Math.round(params.voxelCells) === cells ? 'is-on' : ''}
+                onClick={() => bind('voxelCells')(cells)}
+              >
+                {cells}
+              </button>
+            ))}
+          </div>
+          <p className="panel-note">Surface display</p>
+          <div className="layer-actions">
+            <button
+              type="button"
+              className={!params.showMesh ? 'is-on' : ''}
+              onClick={() => bind('showMesh')(false)}
+            >
+              Lines
+            </button>
+            <button
+              type="button"
+              className={params.showMesh ? 'is-on' : ''}
+              onClick={() => bind('showMesh')(true)}
+            >
+              Solid
+            </button>
+          </div>
+          </PanelSection>
+          ) : (
+          <PanelSection title="Grid" note="Mesh density on the xz plane" defaultOpen={false}>
           <Slider
             label="Resolution"
             min={95}
@@ -480,7 +617,7 @@ function App() {
             onChange={bind('resolution')}
             format={(value) => String(Math.round(value))}
           />
-          <div className="layer-actions">
+          <div className="btn-row btn-row-4">
             {PLANE_RESOLUTIONS.map((cells) => (
               <button
                 key={cells}
@@ -509,6 +646,8 @@ function App() {
               Mesh
             </button>
           </div>
+          </PanelSection>
+          )}
         </aside>
       </div>
     </div>

@@ -7,11 +7,12 @@ import {
   noiseFingerprint,
   sampleHeight,
   stackedAmplitude,
+  landColor,
 } from './noise.js'
 import { getSimulationMaps, isSimulatedEquation } from './simulate.js'
 import { getEventSimulation } from './eventSim.js'
 
-const MAP_PX = 256
+const MAP_PX = 512
 const SIM_PX = 120
 
 function paletteColor(t, palette) {
@@ -100,10 +101,11 @@ export default function NoiseMap2D({ params, selected = 0 }) {
         const x = (px / (width - 1)) * GRID_SIZE - half
         const y = sampleHeight(x, z, params)
         const t = Math.min(1, Math.max(0, (y / amp) * 0.5 + 0.5))
+        const [lr, lg, lb] = landColor(t, 0.12, x, z)
         const i = (py * width + px) * 4
-        data[i] = 26 + (62 - 26) * t
-        data[i + 1] = 30 + (224 - 30) * t
-        data[i + 2] = 36 + (255 - 36) * t
+        data[i] = lr * 255
+        data[i + 1] = lg * 255
+        data[i + 2] = lb * 255
         data[i + 3] = 255
       }
     }
@@ -146,7 +148,7 @@ export default function NoiseMap2D({ params, selected = 0 }) {
       : NOISE_EQUATION
 
   return (
-    <aside className="noise-panel" aria-label="2D noise field">
+    <aside className="noise-panel panel-frame" aria-label="2D noise field">
       <h2>{eventOn ? 'Sim map' : '2D noise'}</h2>
       <p className="panel-note equation">{title}</p>
       <p className="panel-note">
@@ -189,7 +191,7 @@ export default function NoiseMap2D({ params, selected = 0 }) {
       />
       <p className="panel-note">
         {eventOn || sim ? 'maps → terrace · ' : ''}
-        xz plane · {Math.round(params.resolution)}×{Math.round(params.resolution)} cells
+        xz plane
       </p>
     </aside>
   )

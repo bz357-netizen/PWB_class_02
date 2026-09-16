@@ -24,6 +24,8 @@ export const PARAM_HELP = {
     'A remap applied after the noise equation, before amplitude. Identity leaves n as-is. Billow, Ridged, Power, Terrace, Clamp, and Gain change the shape of hills and valleys.',
   Resolution:
     'How many cells the 3D plane uses. Snap to 95, 300, 500, or 1000, or drag up to 1000. 95 is light. 300 is the default. 500 and 1000 show finer drainage but take longer to rebuild.',
+  'Voxel cells':
+    'How many cubes across the xz plane. 24 is chunky and fast. 48 is the default. 64 is finer but heavier to rebuild.',
   'Time of day':
     'Moves the sun (or moon) around the terrace. Dawn and dusk make long warm shadows. Noon is high and bright. Night dims the land and brings stars back.',
   Weather:
