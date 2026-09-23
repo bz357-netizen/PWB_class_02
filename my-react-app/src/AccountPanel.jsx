@@ -9,8 +9,8 @@ import { auth } from './firebase.js'
 import { deleteSettings, listSettings, restoreParams, saveSettings } from './userData.js'
 
 function explain(error) {
-  if (error.code === 'auth/operation-not-allowed') {
-    return 'In Firebase, open Authentication and turn on Email/Password.'
+  if (error.code === 'auth/configuration-not-found' || error.code === 'auth/operation-not-allowed') {
+    return 'In Firebase, open Authentication, click Get started, then turn on Email/Password.'
   }
   if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
     return 'Email or password does not match.'
