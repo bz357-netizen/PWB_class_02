@@ -30,6 +30,7 @@ Path: `C:\Users\asus\Documents\GitHub\PWB_class_02\my-react-app\src`
 | File | Role |
 |---|---|
 | `GalaxyCanvas.jsx` | Scene, camera, OrbitControls, lights, grid mesh, rain, living meshes, render loop |
+| `CsgCanvas.jsx` | Same kind of scene for the CSG tab. Draws the mesh from `meshing.js` |
 | `createMilkyWay.js` | Glow texture + background starfield points (night) |
 
 `GalaxyCanvas` creates Three.js **once** in `useEffect`, then each frame:
@@ -50,6 +51,9 @@ Path: `C:\Users\asus\Documents\GitHub\PWB_class_02\my-react-app\src`
 |---|---|
 | `noise.js` | Layer model, Perlin/value/simplex/Worley/FBM, shape ops, `sampleHeight`, `applyNoiseToGrid` |
 | `simulate.js` | Grid sims used as “equations”: Gray–Scott, hydraulic droplets, waves, diffusion |
+| `density.js` | SDF primitives and sequential CSG (`sampleDensity`) |
+| `meshing.js` | Chunk culling, cube faces, greedy quads, marching cubes |
+| `marchTables.js` | Marching-cubes triangle cases |
 
 Important exports from `noise.js`:
 
@@ -88,6 +92,8 @@ Important exports from `noise.js`:
 | Change HUD look | `App.css`, `index.css`, [[STYLE GUIDE]] |
 | Change sun / weather math | `daylight.js` |
 | Change how hills are built | `noise.js` |
+| Change CSG shapes or boolean ops | `density.js` |
+| Change chunking or the mesh | `meshing.js`, [[Chunking and meshing]] |
 | Change fire / flood / snow | `eventSim.js` |
 | Change villages / countries | `livingSim.js` |
 | Change camera start | `GalaxyCanvas.jsx` (`camera.position.set`) |

@@ -62,6 +62,39 @@ export const PARAM_HELP = {
     'How fast waves die out. Low damping = ripples keep ringing. High damping = the surface settles quickly.',
   shapeMix:
     'How far to blend from the original noise toward the billow shape (|n|). 0 is unchanged, 1 is full billow hills.',
+  'CSG op':
+    'How this solid combines with the shape built so far. Union keeps both. Subtract cuts this solid out. Intersect keeps only the overlap. Smooth versions fillet the join. The first solid is always the base.',
+  Shape:
+    'Signed distance primitive. Negative density is inside. Sphere, box, torus, cylinder, capsule, cone, octahedron, half-space, and gyroid are included.',
+  'Smooth k':
+    'Blend radius for smooth union, subtract, and intersect. 0 is a sharp crease. Larger k rounds the join.',
+  'CSG cells':
+    'How many voxels along each axis. Cost grows with the cube of this number times how many solids you stack. 16 is coarse. 28 is the default. 40 is finer and slower. Empty chunks are skipped.',
+  Mesh:
+    'How the density field becomes triangles. Cubes keep a quad per face. Greedy merges flat faces. Marching cubes places vertices where the density crosses zero.',
+  'Position x': 'Move this solid along world X.',
+  'Position y': 'Move this solid along world Y. The density slice cuts at this height.',
+  'Position z': 'Move this solid along world Z.',
+  'Rotate rx': 'Pitch this solid around local X, in degrees.',
+  'Rotate ry': 'Yaw this solid around local Y, in degrees.',
+  'Rotate rz': 'Roll this solid around local Z, in degrees. Use this to aim a cylinder tunnel.',
+  'Radius r':
+    'Primitive size. For a sphere this is the radius. For a cylinder or capsule it is the shaft radius.',
+  'Major r': 'Distance from the torus center to the tube center.',
+  'Tube t': 'Radius of the torus tube.',
+  Fillet: 'How much the box edges are rounded before the density is evaluated.',
+  Thickness: 'Gyroid wall half-width. Larger means chunkier foam.',
+  'Width X': 'Box or ellipsoid size along local X.',
+  'Height Y': 'Box size along local Y.',
+  'Depth Z': 'Box or ellipsoid size along local Z.',
+  'Radius X': 'Ellipsoid radius along local X.',
+  'Radius Y': 'Ellipsoid radius along local Y.',
+  'Radius Z': 'Ellipsoid radius along local Z.',
+  'Half-height': 'Cylinder or cone extent along local Y, from the center to each end.',
+  'Half-length': 'Capsule shaft length from the center to each rounded end.',
+  'Base r': 'Cone radius at the wide end.',
+  'Size s': 'Octahedron radius, measured to the axis tips.',
+  Frequency: 'How tight the gyroid repeats. Higher frequency means smaller cells.',
 }
 
 export function getParamHelp(label, key) {

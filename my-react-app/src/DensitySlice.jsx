@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { GRID_SIZE } from './noise.js'
 import { csgFingerprint, sampleDensity } from './density.js'
 
-const MAP_PX = 256
+const MAP_PX = 160
 
 export default function DensitySlice({ params, selected = 0 }) {
   const canvasRef = useRef(null)
@@ -55,12 +55,11 @@ export default function DensitySlice({ params, selected = 0 }) {
   }, [fingerprint, yCut, params])
 
   return (
-    <section className="map-card panel-frame" aria-label="Density slice">
+    <aside className="noise-panel panel-frame" aria-label="Density slice">
       <h2>Density slice</h2>
-      <p className="equation">d = CSG(s₀ ∘ s₁ ∘ …) · y = {yCut.toFixed(1)}</p>
-      <p className="map-caption">{solids.length} sequential solids</p>
-      <canvas ref={canvasRef} width={MAP_PX} height={MAP_PX} />
-      <p className="axis-label">xz at selected solid height · cyan = isosurface</p>
-    </section>
+      <p className="panel-note equation">d = op(d, solid) · y = {yCut.toFixed(1)}</p>
+      <p className="panel-note">{solids.length} sequential solids · cyan = isosurface</p>
+      <canvas ref={canvasRef} className="noise-map" width={MAP_PX} height={MAP_PX} />
+    </aside>
   )
 }

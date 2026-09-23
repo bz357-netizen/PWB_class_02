@@ -525,6 +525,101 @@
   background: var(--accent);
 }
 
+.account-panel {
+  position: absolute;
+  left: 50%;
+  bottom: var(--inset);
+  z-index: 3;
+  transform: translateX(-50%);
+  width: 220px;
+  max-height: calc(100% - 32px);
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-panel-90);
+  color: var(--text);
+  pointer-events: auto;
+}
+
+.account-label {
+  margin: 0 0 8px;
+  font-size: var(--text-panel);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-bright);
+}
+
+.account-email,
+.account-panel > p:last-child {
+  margin: 8px 0 0;
+  font-size: var(--text-hint);
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+.account-panel input {
+  width: 100%;
+  height: 24px;
+  margin-bottom: 8px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--text-ui);
+}
+
+.account-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.account-panel button {
+  height: 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--text-ui);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.account-panel > button {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.account-panel button:hover,
+.account-panel button:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.account-panel ul {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.account-panel li {
+  display: grid;
+  grid-template-columns: 1fr 24px;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.account-panel li button:last-child {
+  letter-spacing: 0;
+  text-transform: none;
+}
+
 @media (max-width: 720px) {
   .title-block {
     max-width: calc(100% - 32px);
