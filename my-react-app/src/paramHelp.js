@@ -98,6 +98,18 @@ export const PARAM_HELP = {
   shaderBand: 'World height between contour lines. Smaller bands pack the lines closer.',
   shaderFlow: 'How many downhill streaks cross the slope. Direction comes from the surface normal.',
   shaderWater: 'Waterline height. Land below this is drawn as water. The height grid is not rebuilt.',
+  shaderErode:
+    'How far the unknown has climbed out of the valleys. Gullies run ahead of the front. Eaten ground drops into a glitch void, and trees there break apart.',
+  treeCover:
+    'How much gentle ground is planted. Tall trees fill the low land, medium trees the middle slopes, short trees the high ground. Cliffs stay bare.',
+  vectorCount:
+    'How many arrows are drawn on the ground. The field still covers the terrain. A lower count skips arrows so the view stays readable.',
+  particleCount:
+    'How many motes ride the field. A few are fish in the valley and one is the bear. The rest are wind on the spiral.',
+  trailLength:
+    'How many steps each mote remembers. Short trails keep the ground clear. Longer trails show where the wind, the fish, and the bear have been.',
+  fieldResolution:
+    'How fine the arrow grid is. Higher resolution follows valleys and the spiral more closely. It does not change the terrain mesh.',
 }
 
 export function getParamHelp(label, key) {

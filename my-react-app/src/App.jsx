@@ -61,6 +61,12 @@ const initialParams = {
   shaderBand: 0.45,
   shaderFlow: 6,
   shaderWater: 0.15,
+  shaderErode: 0.42,
+  treeCover: 0.72,
+  vectorCount: 140,
+  particleCount: 28,
+  trailLength: 8,
+  fieldResolution: 18,
   timeOfDay: 12,
   weather: 'clear',
   simEvent: 'none',
@@ -179,6 +185,7 @@ function App() {
   const [params, setParams] = useState(initialParams)
   const [selected, setSelected] = useState(0)
   const [volumeStats, setVolumeStats] = useState(null)
+  const [treeStats, setTreeStats] = useState(null)
   const [view, setView] = useState(() =>
     typeof window !== 'undefined' ? viewFromHash(window.location.hash) : 'field',
   )
@@ -326,7 +333,7 @@ function App() {
       : view === 'csg'
         ? 'Drag to orbit · Each solid combines with the shape so far'
         : view === 'shaders'
-          ? 'Drag to orbit · Same height field, different shader'
+          ? 'Drag to orbit · Hover the ground to stir the flow'
           : 'Drag to orbit · Mesh shows sun and shadow'
 
   return (
@@ -344,7 +351,7 @@ function App() {
       ) : view === 'voxel' ? (
         <VoxelCanvas paramsRef={paramsRef} />
       ) : view === 'shaders' ? (
-        <ShaderCanvas paramsRef={paramsRef} />
+        <ShaderCanvas paramsRef={paramsRef} onTreeStats={setTreeStats} />
       ) : (
         <GalaxyCanvas paramsRef={paramsRef} />
       )}
@@ -428,6 +435,7 @@ function App() {
           <p className="panel-note">Hover a label for help.</p>
 
           {view === 'shaders' ? (
+          <>
           <PanelSection title="Shaders" note="One mesh. The strategy only changes the draw.">
           <div className="btn-row">
             {SHADER_STRATEGIES.map((item) => (
@@ -464,6 +472,17 @@ function App() {
               helpKey="shaderFlow"
             />
           ) : null}
+          {params.shaderStrategy === 'unknown' ? (
+            <Slider
+              label="Reach"
+              min={0}
+              max={1}
+              step={0.01}
+              value={params.shaderErode ?? 0.42}
+              onChange={bind('shaderErode')}
+              helpKey="shaderErode"
+            />
+          ) : null}
           {params.shaderStrategy === 'waterline' ? (
             <Slider
               label="Water y"
@@ -476,6 +495,70 @@ function App() {
             />
           ) : null}
           </PanelSection>
+          <PanelSection
+            title="Trees"
+            note="Scattered on gentle ground. Tall trees take the low land, medium the middle, short the high ground."
+          >
+            <Slider
+              label="Cover"
+              min={0}
+              max={1}
+              step={0.01}
+              value={params.treeCover ?? 0.72}
+              onChange={bind('treeCover')}
+              format={(value) => `${Math.round(value * 100)}%`}
+              helpKey="treeCover"
+            />
+            <p className="panel-note">
+              Tall {treeStats?.tall ?? 0} · Medium {treeStats?.medium ?? 0} · Short {treeStats?.short ?? 0}
+            </p>
+          </PanelSection>
+          <PanelSection
+            title="Flow"
+            note="Arrows sit on the ground. Wind circles the open land, water runs downhill in the valleys. Hover stirs them. Drag stirs harder."
+          >
+            <Slider
+              label="Vectors"
+              min={40}
+              max={400}
+              step={10}
+              value={params.vectorCount ?? 140}
+              onChange={bind('vectorCount')}
+              format={(value) => String(Math.round(value))}
+              helpKey="vectorCount"
+            />
+            <Slider
+              label="Particles"
+              min={8}
+              max={80}
+              step={1}
+              value={params.particleCount ?? 28}
+              onChange={bind('particleCount')}
+              format={(value) => String(Math.round(value))}
+              helpKey="particleCount"
+            />
+            <Slider
+              label="Trail"
+              min={2}
+              max={24}
+              step={1}
+              value={params.trailLength ?? 8}
+              onChange={bind('trailLength')}
+              format={(value) => String(Math.round(value))}
+              helpKey="trailLength"
+            />
+            <Slider
+              label="Field grid"
+              min={8}
+              max={36}
+              step={1}
+              value={params.fieldResolution ?? 18}
+              onChange={bind('fieldResolution')}
+              format={(value) => String(Math.round(value))}
+              helpKey="fieldResolution"
+            />
+          </PanelSection>
+          </>
           ) : null}
 
           <PanelSection title="Daylight" note="Time and weather on the terrace">
