@@ -5,6 +5,7 @@ import { WEATHER_OPS } from './daylight.js'
 import { EVENT_SIMS } from './eventSim.js'
 import { CLIMATES, COUNTRIES } from './livingSim.js'
 import { MESH_MODES } from './meshing.js'
+import { SHADER_STRATEGIES } from './shaders.js'
 import { db } from './firebase.js'
 
 const WEATHER_IDS = WEATHER_OPS.map((item) => item.id)
@@ -12,6 +13,7 @@ const EVENT_IDS = EVENT_SIMS.map((item) => item.id)
 const CLIMATE_IDS = CLIMATES.map((item) => item.id)
 const COUNTRY_IDS = COUNTRIES.map((item) => item.id)
 const MESH_IDS = MESH_MODES.map((item) => item.id)
+const SHADER_IDS = SHADER_STRATEGIES.map((item) => item.id)
 
 function num(value, fallback, min, max) {
   const n = Number(value)
@@ -31,6 +33,10 @@ export function snapshotParams(params) {
       csgCells: params.csgCells,
       meshMode: params.meshMode,
       showMesh: params.showMesh !== false,
+      shaderStrategy: params.shaderStrategy,
+      shaderBand: params.shaderBand,
+      shaderFlow: params.shaderFlow,
+      shaderWater: params.shaderWater,
       timeOfDay: params.timeOfDay,
       weather: params.weather,
       simEvent: params.simEvent,
@@ -55,6 +61,10 @@ export function restoreParams(saved, base) {
     csgCells: num(source.csgCells, base.csgCells, 12, 40),
     meshMode: oneOf(source.meshMode, MESH_IDS, base.meshMode),
     showMesh: source.showMesh !== false,
+    shaderStrategy: oneOf(source.shaderStrategy, SHADER_IDS, base.shaderStrategy ?? 'elevation'),
+    shaderBand: num(source.shaderBand, base.shaderBand ?? 0.45, 0.15, 1.4),
+    shaderFlow: num(source.shaderFlow, base.shaderFlow ?? 6, 2, 14),
+    shaderWater: num(source.shaderWater, base.shaderWater ?? 0.15, -2, 6),
     timeOfDay: num(source.timeOfDay, base.timeOfDay, 0, 24),
     weather: oneOf(source.weather, WEATHER_IDS, base.weather),
     simEvent: oneOf(source.simEvent, EVENT_IDS, base.simEvent),

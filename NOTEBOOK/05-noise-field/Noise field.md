@@ -9,9 +9,13 @@ date: 2026-09-16
 
 # Noise field
 
+[This area](README.md) · [All areas](../../README.md)
+
 Class app in `my-react-app`. Full-window WebGL terrace + HUD.
 
 This vault **is** the Obsidian folder. Notes live next to the code.
+
+![Field tab at noon: mesh, 2D preview, account box, controls](../screenshots/noise-field.png)
 
 ## What it is
 

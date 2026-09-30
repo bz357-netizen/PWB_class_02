@@ -1,6 +1,12 @@
 # Firebase
 
+[This area](README.md) · [All areas](../../README.md)
+
 A short tutorial for complete beginners. You already have a Vite + React app (`my-react-app`). You do not need to know servers yet.
+
+The running app no longer shows the temporary note box from section 9. Sign-in and saved setups are the account panel in the screenshot. This file is still the first Firestore exercise: one note, written and read back.
+
+![Account panel on the current app](../screenshots/account-panel.png)
 
 By the end, you will:
 

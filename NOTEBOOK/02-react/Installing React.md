@@ -1,5 +1,7 @@
 # Installing React
 
+[This area](README.md) · [All areas](../../README.md)
+
 A short tutorial for complete beginners. You do not need to know React or the command line yet.
 
 By the end, you will:

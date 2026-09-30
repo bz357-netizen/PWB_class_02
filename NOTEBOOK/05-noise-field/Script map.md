@@ -7,6 +7,8 @@ date: 2026-09-16
 
 # Script map
 
+[This area](README.md) · [All areas](../../README.md)
+
 What each file in `my-react-app/src` is for. Pair with [[Process]].
 
 Path: `C:\Users\asus\Documents\GitHub\PWB_class_02\my-react-app\src`
@@ -31,6 +33,7 @@ Path: `C:\Users\asus\Documents\GitHub\PWB_class_02\my-react-app\src`
 |---|---|
 | `GalaxyCanvas.jsx` | Scene, camera, OrbitControls, lights, grid mesh, rain, living meshes, render loop |
 | `CsgCanvas.jsx` | Same kind of scene for the CSG tab. Draws the mesh from `meshing.js` |
+| `ShaderCanvas.jsx` | Same height mesh. Swaps the shader strategy |
 | `createMilkyWay.js` | Glow texture + background starfield points (night) |
 
 `GalaxyCanvas` creates Three.js **once** in `useEffect`, then each frame:
@@ -54,6 +57,7 @@ Path: `C:\Users\asus\Documents\GitHub\PWB_class_02\my-react-app\src`
 | `density.js` | SDF primitives and sequential CSG (`sampleDensity`) |
 | `meshing.js` | Chunk culling, cube faces, greedy quads, marching cubes |
 | `marchTables.js` | Marching-cubes triangle cases |
+| `shaders.js` | Strategies for the Shaders tab: elevation, slope, contours, drainage, waterline |
 
 Important exports from `noise.js`:
 
@@ -92,6 +96,7 @@ Important exports from `noise.js`:
 | Change HUD look | `App.css`, `index.css`, [[STYLE GUIDE]] |
 | Change sun / weather math | `daylight.js` |
 | Change how hills are built | `noise.js` |
+| Change a shader strategy | `shaders.js`, [[Shader studies]] |
 | Change CSG shapes or boolean ops | `density.js` |
 | Change chunking or the mesh | `meshing.js`, [[Chunking and meshing]] |
 | Change fire / flood / snow | `eventSim.js` |

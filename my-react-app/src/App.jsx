@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import GalaxyCanvas from './GalaxyCanvas.jsx'
 import VoxelCanvas from './VoxelCanvas.jsx'
 import CsgCanvas from './CsgCanvas.jsx'
+import ShaderCanvas from './ShaderCanvas.jsx'
 import NoiseMap2D from './NoiseMap2D.jsx'
 import DensitySlice from './DensitySlice.jsx'
 import AccountPanel from './AccountPanel.jsx'
@@ -29,6 +30,7 @@ import {
   getDensityShape,
 } from './density.js'
 import { MESH_MODES, getMeshMode } from './meshing.js'
+import { SHADER_STRATEGIES, getShaderStrategy } from './shaders.js'
 import './App.css'
 
 const PLANE_RESOLUTIONS = [95, 300, 500, 1000]
@@ -38,7 +40,14 @@ const CSG_RESOLUTIONS = [16, 24, 32, 40]
 function viewFromHash(hash) {
   if (hash === '#voxel') return 'voxel'
   if (hash === '#csg') return 'csg'
+  if (hash === '#shaders') return 'shaders'
   return 'field'
+}
+
+function shaderFromSearch() {
+  if (typeof window === 'undefined') return 'elevation'
+  const id = new URLSearchParams(window.location.search).get('shader')
+  return SHADER_STRATEGIES.some((item) => item.id === id) ? id : 'elevation'
 }
 
 const initialParams = {
@@ -48,6 +57,10 @@ const initialParams = {
   meshMode: 'marching',
   csgSolids: createDefaultSolids(),
   showMesh: true,
+  shaderStrategy: shaderFromSearch(),
+  shaderBand: 0.45,
+  shaderFlow: 6,
+  shaderWater: 0.15,
   timeOfDay: 12,
   weather: 'clear',
   simEvent: 'none',
@@ -298,14 +311,23 @@ function App() {
     id: String(index),
     label: `${index + 1} · ${item.name}`,
   }))
+  const shader = getShaderStrategy(params.shaderStrategy)
   const title =
-    view === 'voxel' ? 'Voxel terrain' : view === 'csg' ? 'Density CSG' : 'Noise field'
+    view === 'voxel'
+      ? 'Voxel terrain'
+      : view === 'csg'
+        ? 'Density CSG'
+        : view === 'shaders'
+          ? 'Shader studies'
+          : 'Noise field'
   const hint =
     view === 'voxel'
       ? 'Drag to orbit · Cubes stack to the noise height'
       : view === 'csg'
         ? 'Drag to orbit · Each solid combines with the shape so far'
-        : 'Drag to orbit · Mesh shows sun and shadow'
+        : view === 'shaders'
+          ? 'Drag to orbit · Same height field, different shader'
+          : 'Drag to orbit · Mesh shows sun and shadow'
 
   return (
     <div className="app">
@@ -321,6 +343,8 @@ function App() {
         <CsgCanvas paramsRef={paramsRef} onStats={setVolumeStats} />
       ) : view === 'voxel' ? (
         <VoxelCanvas paramsRef={paramsRef} />
+      ) : view === 'shaders' ? (
+        <ShaderCanvas paramsRef={paramsRef} />
       ) : (
         <GalaxyCanvas paramsRef={paramsRef} />
       )}
@@ -355,6 +379,13 @@ function App() {
             >
               CSG
             </button>
+            <button
+              type="button"
+              className={view === 'shaders' ? 'is-on' : ''}
+              onClick={() => openView('shaders')}
+            >
+              Shaders
+            </button>
           </nav>
           <p className="telemetry">
             <span>
@@ -364,8 +395,14 @@ function App() {
               WX <b>{weatherLabel}</b>
             </span>
             <span>
-              {view === 'csg' ? 'SOL' : 'LYR'}{' '}
-              <b>{view === 'csg' ? solids.length : params.layers.length}</b>
+              {view === 'csg' ? 'SOL' : view === 'shaders' ? 'SHD' : 'LYR'}{' '}
+              <b>
+                {view === 'csg'
+                  ? solids.length
+                  : view === 'shaders'
+                    ? shader.label
+                    : params.layers.length}
+              </b>
             </span>
             <span>
               RES{' '}
@@ -389,6 +426,57 @@ function App() {
         <aside className="side-panel panel-frame" aria-label="Scene controls">
           <h2>Controls</h2>
           <p className="panel-note">Hover a label for help.</p>
+
+          {view === 'shaders' ? (
+          <PanelSection title="Shaders" note="One mesh. The strategy only changes the draw.">
+          <div className="btn-row">
+            {SHADER_STRATEGIES.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={params.shaderStrategy === item.id ? 'is-on' : ''}
+                onClick={() => bind('shaderStrategy')(item.id)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <p className="panel-note">{shader.why}</p>
+          {params.shaderStrategy === 'contours' ? (
+            <Slider
+              label="Band"
+              min={0.15}
+              max={1.4}
+              step={0.01}
+              value={params.shaderBand}
+              onChange={bind('shaderBand')}
+              helpKey="shaderBand"
+            />
+          ) : null}
+          {params.shaderStrategy === 'drainage' ? (
+            <Slider
+              label="Streaks"
+              min={2}
+              max={14}
+              step={0.1}
+              value={params.shaderFlow}
+              onChange={bind('shaderFlow')}
+              helpKey="shaderFlow"
+            />
+          ) : null}
+          {params.shaderStrategy === 'waterline' ? (
+            <Slider
+              label="Water y"
+              min={-2}
+              max={6}
+              step={0.01}
+              value={params.shaderWater}
+              onChange={bind('shaderWater')}
+              helpKey="shaderWater"
+            />
+          ) : null}
+          </PanelSection>
+          ) : null}
 
           <PanelSection title="Daylight" note="Time and weather on the terrace">
           <Slider

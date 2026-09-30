@@ -1,3 +1,16 @@
+# my-react-app
+
+Procedural terrain for this class: noise field, voxel columns, and a CSG volume. The study notebook — table of contents, screenshots, and research notes — is the [repository README](../README.md).
+
+```powershell
+npm install
+npm run dev
+```
+
+Open [http://localhost:5173](http://localhost:5173). Scenes: `#field`, `#voxel`, `#csg`, `#shaders`.
+
+---
+
 # React + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.

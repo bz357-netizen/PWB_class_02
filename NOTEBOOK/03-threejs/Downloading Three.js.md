@@ -1,5 +1,7 @@
 # Downloading Three.js
 
+[This area](README.md) · [All areas](../../README.md)
+
 A short tutorial for complete beginners. You already have (or can make) a React app with Vite.
 
 By the end, you will know:

@@ -1,4 +1,5 @@
 {
   "accentColor": "#551ae0",
-  "theme": "moonstone"
+  "theme": "system",
+  "cssTheme": "Willemstad"
 }

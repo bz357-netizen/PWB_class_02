@@ -95,6 +95,9 @@ export const PARAM_HELP = {
   'Base r': 'Cone radius at the wide end.',
   'Size s': 'Octahedron radius, measured to the axis tips.',
   Frequency: 'How tight the gyroid repeats. Higher frequency means smaller cells.',
+  shaderBand: 'World height between contour lines. Smaller bands pack the lines closer.',
+  shaderFlow: 'How many downhill streaks cross the slope. Direction comes from the surface normal.',
+  shaderWater: 'Waterline height. Land below this is drawn as water. The height grid is not rebuilt.',
 }
 
 export function getParamHelp(label, key) {

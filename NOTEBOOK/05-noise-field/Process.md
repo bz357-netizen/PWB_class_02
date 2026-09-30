@@ -7,6 +7,8 @@ date: 2026-09-16
 
 # Process
 
+[This area](README.md) · [All areas](../../README.md)
+
 How the Noise field app runs, from a slider move to a frame on screen.
 
 See also: [[Script map]], [[Noise field]]
@@ -97,6 +99,10 @@ Some scenarios **override** weather (flood → rain, fire → storm, snow → ov
 | Living settlement | Villages, roads, highways from climate + country |
 
 Press **Start** to run `simTime` 0 → 1. **Living** also places 3D huts and path meshes.
+
+Hydraulic erosion, from an earlier session. The sim map is eroded height beside drainage. The editor is still in the frame.
+
+![Erosion scenario: drainage preview and the terrace](../screenshots/erosion-session.png)
 
 ---
 

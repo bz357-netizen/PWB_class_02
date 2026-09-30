@@ -7,7 +7,11 @@ date: 2026-09-22
 
 # Chunking and meshing
 
+[This area](README.md) · [All areas](../../README.md)
+
 Why the CSG tab does not keep one giant voxel grid, and how that grid becomes a mesh.
+
+![CSG tab: five solids, density slice, marching-cubes surface](../screenshots/density-csg.png)
 
 Code: `my-react-app/src/meshing.js`, `marchTables.js`, `CsgCanvas.jsx`, `density.js`.
 Open the app on `#csg`. The **Volume** panel shows chunks, samples, triangles, and rebuild time.

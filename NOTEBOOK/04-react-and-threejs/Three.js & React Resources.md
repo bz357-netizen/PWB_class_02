@@ -1,6 +1,10 @@
 # Three.js & React — Resources and Conclusion
 
+[This area](README.md) · [All areas](../../README.md)
+
 A wrap-up for complete beginners. You do not need to finish every link. This page is a map: what you already did, what each tool is for, and where to learn next without getting lost.
+
+![The split on screen: React HUD, Three.js terrain](../screenshots/noise-field.png)
 
 ---
 
@@ -14,7 +18,7 @@ In this class you:
 4. Put a **full-window WebGL canvas** behind a **React HUD** (title + sliders)
 5. Used **OrbitControls** (drag to orbit, scroll to zoom)
 6. Drew a **Milky Way** with particles
-7. Locked the overlay look in `STYLE GUIDE.md` (dark, small type, one accent)
+7. Locked the overlay look in the [style guide](../08-interface/STYLE%20GUIDE.md) (dark, small type, one accent)
 
 That split is the main idea:
 

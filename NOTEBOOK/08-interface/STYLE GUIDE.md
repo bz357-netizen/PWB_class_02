@@ -1,6 +1,10 @@
 # Style Guide
 
+[This area](README.md) · [All areas](../../README.md)
+
 Graphic specification for the **Milky Way** app (`my-react-app`). Use this file as the source of truth for UI. The 3D canvas can stay rich; chrome around it stays sparse, dark, and technical.
+
+![Controls panel using the tokens in this guide](../screenshots/hud-controls.png)
 
 ---
 
