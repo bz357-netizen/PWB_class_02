@@ -31,6 +31,7 @@ import {
 } from './density.js'
 import { MESH_MODES, getMeshMode } from './meshing.js'
 import { SHADER_STRATEGIES, getShaderStrategy } from './shaders.js'
+import { SCATTER_LAYERS, createScatterParams, describeScatter } from './scatter.js'
 import './App.css'
 
 const PLANE_RESOLUTIONS = [95, 300, 500, 1000]
@@ -62,7 +63,8 @@ const initialParams = {
   shaderFlow: 6,
   shaderWater: 0.15,
   shaderErode: 0.42,
-  treeCover: 0.72,
+  treeCover: 0.64,
+  scatter: createScatterParams(),
   vectorCount: 140,
   particleCount: 28,
   trailLength: 8,
@@ -169,6 +171,87 @@ function PanelSection({ title, note, defaultOpen = true, children }) {
   )
 }
 
+function scatterCount(id, stats) {
+  if (!stats) return 'Placing…'
+  if (id === 'trees') {
+    return `Tall ${stats.tall ?? 0} · Medium ${stats.medium ?? 0} · Short ${stats.short ?? 0}`
+  }
+  if (id === 'rocks') return `Boulders ${stats.boulder ?? 0} · Shards ${stats.shard ?? 0}`
+  if (id === 'bushes') return `${stats.bush ?? 0} bushes`
+  const mills = stats.mill ?? 0
+  return `${mills} windmill${mills === 1 ? '' : 's'}`
+}
+
+function ScatterControls({ params, stats, onScatter, onWater, fieldNote }) {
+  return (
+    <>
+      <PanelSection
+        title="Scatter"
+        note="Each layer places one asset. Density sets how many. Cliffs and water set where they are allowed. Size and color follow the ground."
+      >
+        <Slider
+          label="Water line"
+          min={-2}
+          max={6}
+          step={0.01}
+          value={params.shaderWater ?? 0.15}
+          onChange={onWater}
+          helpKey="shaderWater"
+        />
+        {fieldNote ? (
+          <p className="panel-note">
+            Fire, flood, snow, and erosion hide the scatter while the ground is moving.
+          </p>
+        ) : null}
+      </PanelSection>
+      {SCATTER_LAYERS.map((layer) => {
+        const settings = params.scatter?.[layer.id] ?? layer
+        return (
+          <PanelSection
+            key={layer.id}
+            title={layer.label}
+            note={layer.note}
+            defaultOpen={layer.id === 'trees'}
+          >
+            <Slider
+              label="Density"
+              min={0}
+              max={1}
+              step={0.01}
+              value={settings.density}
+              onChange={onScatter(layer.id, 'density')}
+              format={(value) => `${Math.round(value * 100)}%`}
+              helpKey={`${layer.id}Density`}
+            />
+            <Slider
+              label="Cliffs"
+              min={0}
+              max={1}
+              step={0.01}
+              value={settings.cliffs}
+              onChange={onScatter(layer.id, 'cliffs')}
+              format={(value) => `${Math.round(value * 100)}%`}
+              helpKey={layer.prefersSteep ? 'rockCliffs' : 'cliffAvoid'}
+            />
+            <Slider
+              label="Water"
+              min={0}
+              max={1}
+              step={0.01}
+              value={settings.water}
+              onChange={onScatter(layer.id, 'water')}
+              format={(value) => `${Math.round(value * 100)}%`}
+              helpKey="scatterWater"
+            />
+            <p className="panel-note">{describeScatter(layer, settings)}</p>
+            <p className="panel-note">{scatterCount(layer.id, stats)}</p>
+          </PanelSection>
+        )
+      })}
+    </>
+  )
+}
+
 function formatClock(value) {
   const wrapped = ((value % 24) + 24) % 24
   const hours = Math.floor(wrapped)
@@ -181,11 +264,14 @@ function App() {
     ...initialParams,
     layers: initialParams.layers.map((layer) => ({ ...layer })),
     csgSolids: initialParams.csgSolids.map((solid) => ({ ...solid })),
+    scatter: Object.fromEntries(
+      Object.entries(initialParams.scatter).map(([id, value]) => [id, { ...value }]),
+    ),
   })
   const [params, setParams] = useState(initialParams)
   const [selected, setSelected] = useState(0)
   const [volumeStats, setVolumeStats] = useState(null)
-  const [treeStats, setTreeStats] = useState(null)
+  const [scatterStats, setScatterStats] = useState(null)
   const [view, setView] = useState(() =>
     typeof window !== 'undefined' ? viewFromHash(window.location.hash) : 'field',
   )
@@ -232,6 +318,17 @@ function App() {
 
   const bind = (key) => (next) => {
     commit({ ...params, [key]: next })
+  }
+
+  const setScatter = (id, key) => (value) => {
+    const current = params.scatter?.[id] ?? {}
+    commit({
+      ...params,
+      scatter: {
+        ...params.scatter,
+        [id]: { ...current, [key]: value },
+      },
+    })
   }
 
   const updateLayer = (key) => (next) => {
@@ -334,7 +431,7 @@ function App() {
         ? 'Drag to orbit · Each solid combines with the shape so far'
         : view === 'shaders'
           ? 'Drag to orbit · Hover the ground to stir the flow'
-          : 'Drag to orbit · Mesh shows sun and shadow'
+          : 'Drag to orbit · Plants and mills follow the slope and the shore'
 
   return (
     <div className="app">
@@ -351,9 +448,9 @@ function App() {
       ) : view === 'voxel' ? (
         <VoxelCanvas paramsRef={paramsRef} />
       ) : view === 'shaders' ? (
-        <ShaderCanvas paramsRef={paramsRef} onTreeStats={setTreeStats} />
+        <ShaderCanvas paramsRef={paramsRef} onScatterStats={setScatterStats} />
       ) : (
-        <GalaxyCanvas paramsRef={paramsRef} />
+        <GalaxyCanvas paramsRef={paramsRef} onScatterStats={setScatterStats} />
       )}
 
       <div className="hud">
@@ -434,6 +531,16 @@ function App() {
           <h2>Controls</h2>
           <p className="panel-note">Hover a label for help.</p>
 
+          {view === 'field' ? (
+            <ScatterControls
+              params={params}
+              stats={scatterStats}
+              onScatter={setScatter}
+              onWater={bind('shaderWater')}
+              fieldNote
+            />
+          ) : null}
+
           {view === 'shaders' ? (
           <>
           <PanelSection title="Shaders" note="One mesh. The strategy only changes the draw.">
@@ -495,27 +602,15 @@ function App() {
             />
           ) : null}
           </PanelSection>
-          <PanelSection
-            title="Trees"
-            note="Scattered on gentle ground. Tall trees take the low land, medium the middle, short the high ground."
-          >
-            <Slider
-              label="Cover"
-              min={0}
-              max={1}
-              step={0.01}
-              value={params.treeCover ?? 0.72}
-              onChange={bind('treeCover')}
-              format={(value) => `${Math.round(value * 100)}%`}
-              helpKey="treeCover"
-            />
-            <p className="panel-note">
-              Tall {treeStats?.tall ?? 0} · Medium {treeStats?.medium ?? 0} · Short {treeStats?.short ?? 0}
-            </p>
-          </PanelSection>
+          <ScatterControls
+            params={params}
+            stats={scatterStats}
+            onScatter={setScatter}
+            onWater={bind('shaderWater')}
+          />
           <PanelSection
             title="Flow"
-            note="Arrows sit on the ground. Wind circles the open land, water runs downhill in the valleys. Hover stirs them. Drag stirs harder."
+            note="Water is a field of streaks. They run downhill into the lakes and curl into vortices. Brighter streaks are faster. Drag pushes the water. Wind arrows stay on the high ground."
           >
             <Slider
               label="Vectors"

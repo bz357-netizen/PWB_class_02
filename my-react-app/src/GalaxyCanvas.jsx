@@ -6,9 +6,14 @@ import { GRID_SIZE, applyNoiseToGrid, noiseFingerprint } from './noise.js'
 import { getDaylight } from './daylight.js'
 import { applyEventToGrid } from './eventSim.js'
 import { getLivingLayout } from './livingSim.js'
+import { createScatterView } from './scatter.js'
 
-export default function GalaxyCanvas({ paramsRef }) {
+const DEFORMING_EVENTS = new Set(['fire', 'flood', 'snow', 'hydraulic'])
+
+export default function GalaxyCanvas({ paramsRef, onScatterStats }) {
   const mountRef = useRef(null)
+  const onScatterStatsRef = useRef(onScatterStats)
+  onScatterStatsRef.current = onScatterStats
 
   useEffect(() => {
     const mount = mountRef.current
@@ -131,6 +136,7 @@ export default function GalaxyCanvas({ paramsRef }) {
     grid.castShadow = true
     grid.receiveShadow = true
     scene.add(grid)
+    const scatterView = createScatterView(scene)
 
     const lineMat = new THREE.MeshBasicMaterial({
       vertexColors: true,
@@ -315,6 +321,7 @@ export default function GalaxyCanvas({ paramsRef }) {
     window.addEventListener('resize', resize)
 
     let frameId = 0
+    const started = performance.now()
     const animate = () => {
       const params = paramsRef.current
       const nextKey = noiseFingerprint(params)
@@ -338,6 +345,22 @@ export default function GalaxyCanvas({ paramsRef }) {
         livingNetKey = ''
       }
       syncLiving(params)
+      const deforming = DEFORMING_EVENTS.has(params.simEvent)
+      scatterView.group.visible = !deforming
+      if (!deforming && noiseKey) {
+        const counts = scatterView.sync(gridGeom, params, `${noiseKey}|${lastSegments}`)
+        if (counts) onScatterStatsRef.current?.(counts)
+        scatterView.tick({
+          elapsed: (performance.now() - started) / 1000,
+          waterY: params.shaderWater ?? 0.15,
+          submerge: 0,
+          erode: 0,
+          unknown: 0,
+          low: 0,
+          high: 1,
+          showWater: true,
+        })
+      }
       const filled = params.showMesh !== false
       grid.visible = filled
       lines.visible = !filled
@@ -369,6 +392,7 @@ export default function GalaxyCanvas({ paramsRef }) {
     return () => {
       cancelAnimationFrame(frameId)
       window.removeEventListener('resize', resize)
+      scatterView.dispose()
       controls.dispose()
       fieldGeom.dispose()
       fieldMat.dispose()

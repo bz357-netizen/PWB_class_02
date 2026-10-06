@@ -4,13 +4,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { GRID_SIZE, applyNoiseToGrid, noiseFingerprint } from './noise.js'
 import { getDaylight } from './daylight.js'
 import { createStrategyMaterial } from './shaders.js'
-import {
-  TREE_KINDS,
-  createTreeGeometries,
-  createTreeMaterial,
-  emptyScatter,
-  scatterTrees,
-} from './trees.js'
+import { createScatterView } from './scatter.js'
 import { buildEnvironmentPaths, buildFilaments, findCore } from './paths.js'
 import { createFlowLayer } from './flowField.js'
 
@@ -55,10 +49,10 @@ function heightRange(geometry) {
   return { low, high }
 }
 
-export default function ShaderCanvas({ paramsRef, onTreeStats }) {
+export default function ShaderCanvas({ paramsRef, onScatterStats }) {
   const mountRef = useRef(null)
-  const onTreeStatsRef = useRef(onTreeStats)
-  onTreeStatsRef.current = onTreeStats
+  const onScatterStatsRef = useRef(onScatterStats)
+  onScatterStatsRef.current = onScatterStats
 
   useEffect(() => {
     const mount = mountRef.current
@@ -122,35 +116,7 @@ export default function ShaderCanvas({ paramsRef, onTreeStats }) {
     grid.receiveShadow = true
     scene.add(grid)
 
-    const treeGeos = createTreeGeometries()
-    const treeTime = { value: 0 }
-    const treeWater = { value: 0.15 }
-    const treeSubmerge = { value: 0 }
-    const treeErode = { value: 0.42 }
-    const treeUnknown = { value: 0 }
-    const treeLow = { value: 0 }
-    const treeHigh = { value: 1 }
-    const treeMaterial = createTreeMaterial(treeTime, treeWater, treeSubmerge, {
-      erode: treeErode,
-      unknown: treeUnknown,
-      low: treeLow,
-      high: treeHigh,
-    })
-    const treeMeshes = {}
-    for (const kind of TREE_KINDS) {
-      const mesh = new THREE.InstancedMesh(treeGeos[kind.id], treeMaterial, 4200)
-      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
-      mesh.castShadow = true
-      mesh.receiveShadow = true
-      mesh.frustumCulled = false
-      mesh.count = 0
-      scene.add(mesh)
-      treeMeshes[kind.id] = mesh
-    }
-    const treeDummy = new THREE.Object3D()
-    const treeTint = new THREE.Color()
-    let scatter = emptyScatter()
-    let treeKey = ''
+    const scatterView = createScatterView(scene)
 
     const matHoney = new THREE.MeshBasicMaterial({
       color: 0xf0b84a,
@@ -327,36 +293,8 @@ export default function ShaderCanvas({ paramsRef, onTreeStats }) {
       scene.fog.density = day.fogDensity
       renderer.setClearColor(day.sky, 1)
 
-      const cover = params.treeCover ?? 0.72
-      const nextTreeKey = `${noiseKey}|${lastSegments}|${cover.toFixed(3)}`
-      if (nextTreeKey !== treeKey) {
-        treeKey = nextTreeKey
-        scatter = scatterTrees(gridGeom, cover)
-        const counts = {
-          tall: scatter.tall.length,
-          medium: scatter.medium.length,
-          short: scatter.short.length,
-        }
-        onTreeStatsRef.current?.(counts)
-        for (const kind of TREE_KINDS) {
-          const mesh = treeMeshes[kind.id]
-          const items = scatter[kind.id]
-          mesh.count = items.length
-          for (let i = 0; i < items.length; i++) {
-            const item = items[i]
-            treeDummy.position.set(item.x, item.y, item.z)
-            treeDummy.rotation.set(0, item.rot, 0)
-            treeDummy.scale.setScalar(item.scale)
-            treeDummy.updateMatrix()
-            mesh.setMatrixAt(i, treeDummy.matrix)
-            const lift = kind.id === 'short' ? 1.04 : 1
-            treeTint.setRGB(item.tint, item.tint * lift, item.tint * 0.9)
-            mesh.setColorAt(i, treeTint)
-          }
-          mesh.instanceMatrix.needsUpdate = true
-          if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
-        }
-      }
+      const counts = scatterView.sync(gridGeom, params, noiseKey ? `${noiseKey}|${lastSegments}` : '')
+      if (counts) onScatterStatsRef.current?.(counts)
 
       material.wireframe = params.showMesh === false
       if (material.uniforms) {
@@ -448,13 +386,16 @@ export default function ShaderCanvas({ paramsRef, onTreeStats }) {
       strangeGroup.visible = strategyId === 'unknown'
 
       const elapsed = (performance.now() - started) / 1000
-      treeTime.value = elapsed
-      treeWater.value = params.shaderWater ?? 0.15
-      treeSubmerge.value = strategyId === 'waterline' ? 1 : 0
-      treeErode.value = params.shaderErode ?? 0.42
-      treeUnknown.value = strategyId === 'unknown' ? 1 : 0
-      treeLow.value = range.low
-      treeHigh.value = range.high
+      scatterView.tick({
+        elapsed,
+        waterY: params.shaderWater ?? 0.15,
+        submerge: strategyId === 'waterline' ? 1 : 0,
+        erode: params.shaderErode ?? 0.42,
+        unknown: strategyId === 'unknown' ? 1 : 0,
+        low: range.low,
+        high: range.high,
+        showWater: strategyId !== 'waterline' && strategyId !== 'unknown',
+      })
 
       if (pointerOver) {
         raycaster.setFromCamera(pointerNdc, camera)
@@ -502,11 +443,7 @@ export default function ShaderCanvas({ paramsRef, onTreeStats }) {
       controls.dispose()
       gridGeom.dispose()
       material.dispose()
-      treeMaterial.dispose()
-      for (const kind of TREE_KINDS) {
-        treeGeos[kind.id].dispose()
-        treeMeshes[kind.id].dispose()
-      }
+      scatterView.dispose()
       renderer.dispose()
       if (renderer.domElement.parentNode === mount) {
         mount.removeChild(renderer.domElement)

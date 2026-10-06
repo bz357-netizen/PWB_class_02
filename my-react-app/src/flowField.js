@@ -4,12 +4,12 @@ import { meshHeight } from './paths.js'
 
 const CLIFF = 0.32
 const MAX_ARROWS = 420
+const MAX_FLUID = 11000
 const MAX_PARTICLES = 80
 const MAX_TRAIL = 24
 const TRAIL_SPACING = 0.42
 
 const WIND_COLOR = [0.45, 0.9, 1]
-const RIVER_COLOR = [0.2, 0.86, 0.78]
 const FISH_COLOR = [0.4, 0.98, 0.92]
 const BEAR_COLOR = [0.98, 0.62, 0.22]
 
@@ -30,7 +30,7 @@ function slopeAt(heightAt, x, z) {
   return Math.hypot(yx - y, yz - y) / 0.5
 }
 
-function buildField(geometry, resolution) {
+function buildField(geometry, resolution, waterY) {
   const heightAt = meshHeight(geometry)
   const res = Math.max(8, Math.round(resolution))
   const half = GRID_SIZE * 0.5 - 0.7
@@ -97,6 +97,9 @@ function buildField(geometry, resolution) {
     if (dist > 2.2 && dist < 14) windRing.push(index)
   }
 
+  const vortices = placeVortices(cells, waterY)
+  const fluid = buildFluid(heightAt, waterY, minY, maxY, vortices, resolution)
+
   return {
     heightAt,
     minY,
@@ -110,8 +113,132 @@ function buildField(geometry, resolution) {
     cx,
     cz,
     res,
+    fluid,
+    waterY,
     honey: { x: 2, y: 0, z: 2 },
   }
+}
+
+/** Flat basins get whirlpools. The deepest pool spins widest. */
+function placeVortices(cells, waterY) {
+  const pool = cells
+    .filter((cell) => cell.y <= waterY + 0.35 && cell.slope < 0.34)
+    .sort((a, b) => a.y - b.y)
+  const picked = []
+  for (const cell of pool) {
+    let clear = true
+    for (const other of picked) {
+      if (Math.hypot(other.x - cell.x, other.z - cell.z) < 5.2) {
+        clear = false
+        break
+      }
+    }
+    if (!clear) continue
+    picked.push(cell)
+    if (picked.length >= 6) break
+  }
+  return picked.map((cell, index) => ({
+    x: cell.x,
+    z: cell.z,
+    radius: index === 0 ? 5.4 : 2.3 + (index % 3) * 0.7,
+    reach: index === 0 ? 13 : 8,
+    spin: index % 2 === 0 ? 1 : -1,
+    strength: index === 0 ? 2.35 : 2.7,
+  }))
+}
+
+/**
+ * A grid of velocities over the water and the valleys that feed it.
+ * Valleys drain downhill. On the water, that current curls into vortices.
+ */
+function buildFluid(heightAt, waterY, minY, maxY, vortices, resolution) {
+  const res = Math.max(40, Math.min(64, Math.round((resolution ?? 18) * 2.6)))
+  const half = GRID_SIZE * 0.5 - 0.35
+  const step = (half * 2) / (res - 1)
+  const count = res * res
+  const fvx = new Float32Array(count)
+  const fvz = new Float32Array(count)
+  const fhy = new Float32Array(count)
+  const wet = new Uint8Array(count)
+  const spawn = []
+  const waterSpawn = []
+  const span = Math.max(0.001, maxY - minY)
+
+  for (let j = 0; j < res; j++) {
+    for (let i = 0; i < res; i++) {
+      const x = -half + i * step
+      const z = -half + j * step
+      const y = heightAt(x, z)
+      const index = j * res + i
+      if (y == null) continue
+      fhy[index] = y
+      const rank = (y - minY) / span
+      const inWater = y <= waterY + 0.05
+      const inValley = !inWater && rank < 0.4 && slopeAt(heightAt, x, z) < 0.42
+      if (!inWater && !inValley) continue
+
+      const g = gradient(heightAt, x, z, 0.65)
+      let vx = 0
+      let vz = 0
+      if (g) {
+        const drop = Math.hypot(g.x, g.z)
+        if (drop > 0.012) {
+          const drain = inWater ? 0.28 : 1.05
+          vx -= (g.x / drop) * drain
+          vz -= (g.z / drop) * drain
+        }
+      }
+      for (const vortex of vortices) {
+        const dx = x - vortex.x
+        const dz = z - vortex.z
+        const radius = Math.hypot(dx, dz)
+        if (radius > vortex.reach || radius < 0.001) continue
+        const fall = Math.exp(-(radius * radius) / (2 * vortex.radius * vortex.radius))
+        const core = 0.75
+        const spin =
+          vortex.spin * (radius < core ? radius / core : core / radius) * vortex.strength * fall
+        const weight = inWater ? 1 : fall * 0.35
+        vx += (-dz / radius) * spin * weight
+        vz += (dx / radius) * spin * weight
+        if (inWater) {
+          vx += (-dx / radius) * 0.16 * fall
+          vz += (-dz / radius) * 0.16 * fall
+        }
+      }
+      fvx[index] = vx
+      fvz[index] = vz
+      wet[index] = inWater ? 2 : 1
+      if (inWater) waterSpawn.push(x, z)
+      else if ((i + j) % 2 === 0) spawn.push(x, z)
+    }
+  }
+
+  return { res, half, fvx, fvz, fhy, wet, spawn, waterSpawn, waterY }
+}
+
+function sampleFluid(fluid, x, z) {
+  const { res, half, fvx, fvz, fhy, wet } = fluid
+  const span = half * 2
+  const fx = ((x + half) / span) * (res - 1)
+  const fz = ((z + half) / span) * (res - 1)
+  if (fx < 0 || fz < 0 || fx > res - 1 || fz > res - 1) return null
+  const x0 = Math.min(res - 2, Math.floor(fx))
+  const z0 = Math.min(res - 2, Math.floor(fz))
+  const tx = fx - x0
+  const tz = fz - z0
+  const i00 = z0 * res + x0
+  const i10 = i00 + 1
+  const i01 = i00 + res
+  const i11 = i01 + 1
+  const mark = wet[i00] || wet[i10] || wet[i01] || wet[i11]
+  if (!mark) return null
+  const blend = (arr) => {
+    const a = arr[i00] * (1 - tx) + arr[i10] * tx
+    const b = arr[i01] * (1 - tx) + arr[i11] * tx
+    return a * (1 - tz) + b * tz
+  }
+  const nearest = wet[tz < 0.5 ? (tx < 0.5 ? i00 : i10) : tx < 0.5 ? i01 : i11]
+  return { x: blend(fvx), z: blend(fvz), y: blend(fhy), wet: nearest || 1 }
 }
 
 function windVector(x, z, cx, cz, time) {
@@ -304,7 +431,31 @@ export function createFlowLayer() {
   })
   const arrows = new THREE.LineSegments(arrowGeometry, arrowMaterial)
   arrows.frustumCulled = false
+  arrows.renderOrder = 3
   group.add(arrows)
+
+  const fluidPositions = new Float32Array(MAX_FLUID * 2 * 3)
+  const fluidColors = new Float32Array(MAX_FLUID * 2 * 3)
+  const fluidGeometry = new THREE.BufferGeometry()
+  fluidGeometry.setAttribute('position', new THREE.BufferAttribute(fluidPositions, 3).setUsage(THREE.DynamicDrawUsage))
+  fluidGeometry.setAttribute('color', new THREE.BufferAttribute(fluidColors, 3).setUsage(THREE.DynamicDrawUsage))
+  fluidGeometry.setDrawRange(0, 0)
+  const fluidMaterial = new THREE.LineBasicMaterial({
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.95,
+    fog: false,
+    toneMapped: false,
+    depthWrite: false,
+  })
+  const fluidLines = new THREE.LineSegments(fluidGeometry, fluidMaterial)
+  fluidLines.frustumCulled = false
+  fluidLines.renderOrder = 5
+  group.add(fluidLines)
+  const fluidX = new Float32Array(MAX_FLUID)
+  const fluidZ = new Float32Array(MAX_FLUID)
+  const fluidLife = new Float32Array(MAX_FLUID)
+  let fluidBorn = 0
 
   const trailPositions = new Float32Array(MAX_PARTICLES * (MAX_TRAIL - 1) * 2 * 3)
   const trailColors = new Float32Array(MAX_PARTICLES * (MAX_TRAIL - 1) * 2 * 3)
@@ -505,34 +656,21 @@ export function createFlowLayer() {
       arrowGeometry.setDrawRange(0, 0)
       return
     }
-    const drawable = []
-    for (let i = 0; i < field.cells.length; i++) {
-      if (field.cells[i].kind !== 0) drawable.push(i)
-    }
-    const shown = Math.min(MAX_ARROWS, drawable.length, Math.max(0, Math.round(vectorCount)))
+    const drawable = field.wind.filter((index) => field.cells[index].rank >= 0.62)
+    const shown = Math.min(MAX_ARROWS, drawable.length, Math.max(0, Math.round(vectorCount * 0.12)))
     if (!shown) {
       arrowGeometry.setDrawRange(0, 0)
       return
     }
     const stride = drawable.length / shown
     const spacing = (GRID_SIZE - 1.4) / Math.max(1, field.res - 1)
-    const baseLen = Math.min(1.55, spacing * 0.82)
+    const baseLen = Math.min(1.35, spacing * 0.72)
     const lift = unknown ? 0.42 : 0.18
 
     for (let i = 0; i < shown; i++) {
       const cell = field.cells[drawable[Math.floor(i * stride)]]
-      let vx
-      let vz
-      if (cell.kind === 1) {
-        const flow = drainage(field.heightAt, cell.x, cell.z)
-        vx = flow ? flow.x : -cell.gx
-        vz = flow ? flow.z : -cell.gz
-      } else {
-        const flow = windVector(cell.x, cell.z, field.cx, field.cz, time)
-        vx = flow.x
-        vz = flow.z
-      }
-      const stirred = stir(vx, vz, cell.x, cell.z, pointer)
+      const flow = windVector(cell.x, cell.z, field.cx, field.cz, time)
+      const stirred = stir(flow.x, flow.z, cell.x, cell.z, pointer)
       const mag = Math.hypot(stirred.x, stirred.z) || 1
       const dx = stirred.x / mag
       const dz = stirred.z / mag
@@ -540,8 +678,8 @@ export function createFlowLayer() {
       const y = cell.y + lift
       const x1 = cell.x + dx * arrowLen
       const z1 = cell.z + dz * arrowLen
-      const rgb = tint(cell.kind === 1 ? RIVER_COLOR : WIND_COLOR, unknown, stirred.w)
-      const tail = [rgb[0] * 0.4, rgb[1] * 0.4, rgb[2] * 0.4]
+      const rgb = tint(WIND_COLOR, unknown, stirred.w)
+      const tail = [rgb[0] * 0.35, rgb[1] * 0.35, rgb[2] * 0.35]
       const back = arrowLen * 0.28
       const wing = arrowLen * 0.18
       const base = i * 6
@@ -555,6 +693,75 @@ export function createFlowLayer() {
     arrowGeometry.setDrawRange(0, shown * 6)
     arrowGeometry.attributes.position.needsUpdate = true
     arrowGeometry.attributes.color.needsUpdate = true
+  }
+
+  function respawnFluid(index) {
+    const fluid = field?.fluid
+    const pool = fluid?.waterSpawn?.length && Math.random() < 0.82 ? fluid.waterSpawn : fluid?.spawn
+    if (!pool?.length) return false
+    const slot = (Math.random() * (pool.length / 2)) | 0
+    fluidX[index] = pool[slot * 2] + (Math.random() - 0.5) * 0.45
+    fluidZ[index] = pool[slot * 2 + 1] + (Math.random() - 0.5) * 0.45
+    fluidLife[index] = 2.2 + Math.random() * 4.2
+    return true
+  }
+
+  function drawFluid(vectorCount, dt, pointer, unknown, trailLength) {
+    const fluid = field?.fluid
+    const shown = Math.min(MAX_FLUID, Math.max(2800, Math.round(vectorCount * 48)))
+    if (!fluid?.spawn.length && !fluid?.waterSpawn.length) {
+      fluidGeometry.setDrawRange(0, 0)
+      return
+    }
+    if (fluidBorn !== shown) {
+      for (let i = fluidBorn; i < shown; i++) respawnFluid(i)
+      fluidBorn = shown
+    }
+    const step = Math.min(0.05, Math.max(0.001, dt))
+    const dash = 0.72 + (Math.max(2, trailLength) / 24) * 0.85
+    let vertex = 0
+    for (let i = 0; i < shown; i++) {
+      let sample = sampleFluid(fluid, fluidX[i], fluidZ[i])
+      fluidLife[i] -= step
+      if (!sample || fluidLife[i] <= 0) {
+        respawnFluid(i)
+        sample = sampleFluid(fluid, fluidX[i], fluidZ[i])
+        if (!sample) continue
+      }
+      const stirred = stir(sample.x, sample.z, fluidX[i], fluidZ[i], pointer)
+      const vx = stirred.x
+      const vz = stirred.z
+      const speed = Math.hypot(vx, vz) || 0.05
+      fluidX[i] += vx * step * 3.1
+      fluidZ[i] += vz * step * 3.1
+      const next = sampleFluid(fluid, fluidX[i], fluidZ[i])
+      if (!next) {
+        respawnFluid(i)
+        continue
+      }
+      const inv = 1 / speed
+      const dx = vx * inv
+      const dz = vz * inv
+      const length = Math.min(0.72, (0.12 + Math.min(0.38, speed * 0.2)) * dash)
+      const y = (next.wet === 2 ? fluid.waterY + 0.11 : next.y + 0.16) + (unknown ? 0.18 : 0)
+      const hot = Math.min(1, speed / 2.15)
+      const head = tint(
+        [
+          0.05 + hot * 0.62 + stirred.w * 0.35,
+          0.28 + hot * 0.66,
+          0.78 + hot * 0.22,
+        ],
+        unknown,
+        stirred.w,
+      )
+      const tail = [head[0] * 0.28, head[1] * 0.34, head[2] * 0.45]
+      writeVertex(fluidPositions, fluidColors, vertex, fluidX[i] - dx * length, y, fluidZ[i] - dz * length, tail)
+      writeVertex(fluidPositions, fluidColors, vertex + 1, fluidX[i] + dx * length * 0.25, y, fluidZ[i] + dz * length * 0.25, head)
+      vertex += 2
+    }
+    fluidGeometry.setDrawRange(0, vertex)
+    fluidGeometry.attributes.position.needsUpdate = true
+    fluidGeometry.attributes.color.needsUpdate = true
   }
 
   function drawParticles(trailLength, unknown) {
@@ -600,16 +807,21 @@ export function createFlowLayer() {
   }
 
   function update({ geometry, key, params, time, dt, pointer, unknown, honey }) {
-    if (!field || key !== fieldKey) {
-      fieldKey = key
-      field = buildField(geometry, params.fieldResolution ?? 18)
+    const waterY = params.shaderWater ?? 0.15
+    const nextKey = `${key}|${waterY.toFixed(3)}`
+    if (!field || nextKey !== fieldKey) {
+      fieldKey = nextKey
+      field = buildField(geometry, params.fieldResolution ?? 18, waterY)
       lastParticleCount = -1
+      fluidBorn = 0
     }
     if (honey) field.honey = honey
     ensureParticles(params.particleCount ?? 28, field)
     const step = Math.min(0.05, Math.max(0.001, dt))
     for (const particle of particles) stepParticle(particle, step, time, pointer)
-    drawArrows(params.vectorCount ?? 140, time, pointer, unknown)
+    const vectors = params.vectorCount ?? 140
+    drawFluid(vectors, step, pointer, unknown, params.trailLength ?? 8)
+    drawArrows(vectors, time, pointer, unknown)
     drawParticles(params.trailLength ?? 8, unknown)
 
     if (pointer.hit) {
@@ -627,6 +839,8 @@ export function createFlowLayer() {
   function dispose() {
     arrowGeometry.dispose()
     arrowMaterial.dispose()
+    fluidGeometry.dispose()
+    fluidMaterial.dispose()
     trailGeometry.dispose()
     trailMaterial.dispose()
     headGeometry.dispose()

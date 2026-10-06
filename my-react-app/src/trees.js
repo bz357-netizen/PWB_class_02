@@ -1,5 +1,4 @@
 import * as THREE from 'three'
-import { GRID_SIZE, perlin2 } from './noise.js'
 
 export const TREE_KINDS = [
   { id: 'tall', label: 'Tall', note: 'Low sheltered ground' },
@@ -7,20 +6,11 @@ export const TREE_KINDS = [
   { id: 'short', label: 'Short', note: 'High ground' },
 ]
 
-const MAX_TREES = 4200
-
-function hash01(ix, iz) {
-  let n = Math.imul(ix | 0, 374761393) + Math.imul(iz | 0, 668265263)
-  n = (n ^ (n >>> 13)) >>> 0
-  n = Math.imul(n, 1274126177)
-  return ((n ^ (n >>> 16)) >>> 0) / 4294967295
-}
-
-function blankParts() {
+export function blankParts() {
   return { positions: [], normals: [], colors: [], wind: [], indices: [] }
 }
 
-function consume(target, geometry, color, tip) {
+export function consume(target, geometry, color, tip) {
   const pos = geometry.attributes.position
   const nrm = geometry.attributes.normal
   const index = geometry.index
@@ -45,7 +35,7 @@ function consume(target, geometry, color, tip) {
   geometry.dispose()
 }
 
-function pack(target) {
+export function pack(target) {
   const geometry = new THREE.BufferGeometry()
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(target.positions, 3))
   geometry.setAttribute('normal', new THREE.Float32BufferAttribute(target.normals, 3))
@@ -56,7 +46,7 @@ function pack(target) {
   return geometry
 }
 
-function place(geometry, y) {
+export function place(geometry, y) {
   geometry.translate(0, y, 0)
   return geometry
 }
@@ -91,100 +81,6 @@ export function createTreeGeometries() {
     medium: pack(medium),
     short: pack(short),
   }
-}
-
-function meshSampler(geometry) {
-  const pos = geometry.attributes.position
-  const cols = Math.round(Math.sqrt(pos.count))
-  const segs = Math.max(1, cols - 1)
-  const half = GRID_SIZE / 2
-
-  return (x, z) => {
-    const fx = ((x + half) / GRID_SIZE) * segs
-    const fz = ((z + half) / GRID_SIZE) * segs
-    if (fx < 0 || fz < 0 || fx > segs || fz > segs) return null
-    const x0 = Math.min(segs - 1, Math.floor(fx))
-    const z0 = Math.min(segs - 1, Math.floor(fz))
-    const tx = fx - x0
-    const tz = fz - z0
-    const h = (ix, iz) => pos.getY(iz * cols + ix)
-    const y00 = h(x0, z0)
-    const y10 = h(x0 + 1, z0)
-    const y01 = h(x0, z0 + 1)
-    const y11 = h(x0 + 1, z0 + 1)
-    return y00 * (1 - tx) * (1 - tz) + y10 * tx * (1 - tz) + y01 * (1 - tx) * tz + y11 * tx * tz
-  }
-}
-
-export function emptyScatter() {
-  return { tall: [], medium: [], short: [] }
-}
-
-/** Place three heights on gentle ground. Low land grows tall trees, high land grows short ones. */
-export function scatterTrees(geometry, cover) {
-  const amount = THREE.MathUtils.clamp(cover ?? 0, 0, 1)
-  if (amount <= 0.001) return emptyScatter()
-
-  const heightAt = meshSampler(geometry)
-  const spacing = THREE.MathUtils.lerp(2.15, 0.58, amount)
-  const clear = THREE.MathUtils.lerp(0.22, -0.35, amount)
-  const half = GRID_SIZE * 0.5 - 0.7
-  const candidates = []
-  let row = 0
-
-  for (let z = -half; z <= half; z += spacing) {
-    const stagger = (row % 2) * spacing * 0.5
-    let col = 0
-    for (let x = -half + stagger; x <= half; x += spacing) {
-      const jx = (hash01(row + 3, col) - 0.5) * spacing * 0.78
-      const jz = (hash01(col + 11, row) - 0.5) * spacing * 0.78
-      const px = x + jx
-      const pz = z + jz
-      const y = heightAt(px, pz)
-      const yx = heightAt(px + 0.5, pz)
-      const yz = heightAt(px, pz + 0.5)
-      col += 1
-      if (y == null || yx == null || yz == null) continue
-      const slope = Math.hypot(yx - y, yz - y) / 0.5
-      if (slope > 0.46) continue
-      const mask = perlin2(px * 0.075, pz * 0.075) * 0.72 + perlin2(px * 0.21 + 2.4, pz * 0.21 - 1.7) * 0.28
-      if (mask < clear) continue
-      candidates.push({ x: px, y, z: pz, slope })
-    }
-    row += 1
-  }
-
-  if (!candidates.length) return emptyScatter()
-
-  let list = candidates
-  if (list.length > MAX_TREES) {
-    const step = list.length / MAX_TREES
-    const trimmed = []
-    for (let i = 0; i < MAX_TREES; i++) trimmed.push(list[Math.floor(i * step)])
-    list = trimmed
-  }
-
-  const ranked = [...list].sort((a, b) => a.y - b.y)
-  const out = emptyScatter()
-  for (let i = 0; i < ranked.length; i++) {
-    const item = ranked[i]
-    const rank = i / ranked.length
-    const wobble = perlin2(item.x * 0.17 + 6.5, item.z * 0.17) * 0.07
-    const band = THREE.MathUtils.clamp(rank + wobble, 0, 0.999)
-    const kind = band < 1 / 3 ? 'tall' : band < 2 / 3 ? 'medium' : 'short'
-    const h = hash01(Math.round(item.x * 17), Math.round(item.z * 17))
-    const base = kind === 'tall' ? 0.88 : kind === 'medium' ? 0.86 : 0.78
-    const slopeScale = 1 - THREE.MathUtils.clamp(item.slope / 0.46, 0, 1) * 0.22
-    out[kind].push({
-      x: item.x,
-      y: item.y,
-      z: item.z,
-      rot: h * Math.PI * 2,
-      scale: (base + h * (kind === 'short' ? 0.42 : 0.48)) * slopeScale,
-      tint: 0.84 + h * 0.28,
-    })
-  }
-  return out
 }
 
 export function createTreeMaterial(timeUniform, waterUniform, submergeUniform, extra) {

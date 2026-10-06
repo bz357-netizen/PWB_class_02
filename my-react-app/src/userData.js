@@ -6,6 +6,7 @@ import { EVENT_SIMS } from './eventSim.js'
 import { CLIMATES, COUNTRIES } from './livingSim.js'
 import { MESH_MODES } from './meshing.js'
 import { SHADER_STRATEGIES } from './shaders.js'
+import { SCATTER_LAYERS } from './scatter.js'
 import { db } from './firebase.js'
 
 const WEATHER_IDS = WEATHER_OPS.map((item) => item.id)
@@ -25,6 +26,24 @@ function oneOf(value, options, fallback) {
   return options.includes(value) ? value : fallback
 }
 
+function restoreScatter(source, base) {
+  const raw = source.scatter && typeof source.scatter === 'object' ? source.scatter : {}
+  const fallback = base.scatter && typeof base.scatter === 'object' ? base.scatter : {}
+  const out = {}
+  for (const layer of SCATTER_LAYERS) {
+    const item = raw[layer.id] && typeof raw[layer.id] === 'object' ? raw[layer.id] : {}
+    const baseLayer = fallback[layer.id] || layer
+    let density = item.density
+    if (density == null && layer.id === 'trees' && source.treeCover != null) density = source.treeCover
+    out[layer.id] = {
+      density: num(density, baseLayer.density ?? layer.density, 0, 1),
+      cliffs: num(item.cliffs, baseLayer.cliffs ?? layer.cliffs, 0, 1),
+      water: num(item.water, baseLayer.water ?? layer.water, 0, 1),
+    }
+  }
+  return out
+}
+
 export function snapshotParams(params) {
   return JSON.parse(
     JSON.stringify({
@@ -39,6 +58,7 @@ export function snapshotParams(params) {
       shaderWater: params.shaderWater,
       shaderErode: params.shaderErode,
       treeCover: params.treeCover,
+      scatter: params.scatter,
       vectorCount: params.vectorCount,
       particleCount: params.particleCount,
       trailLength: params.trailLength,
@@ -72,7 +92,8 @@ export function restoreParams(saved, base) {
     shaderFlow: num(source.shaderFlow, base.shaderFlow ?? 6, 2, 14),
     shaderWater: num(source.shaderWater, base.shaderWater ?? 0.15, -2, 6),
     shaderErode: num(source.shaderErode, base.shaderErode ?? 0.42, 0, 1),
-    treeCover: num(source.treeCover, base.treeCover ?? 0.72, 0, 1),
+    treeCover: num(source.treeCover, base.treeCover ?? 0.64, 0, 1),
+    scatter: restoreScatter(source, base),
     vectorCount: num(source.vectorCount, base.vectorCount ?? 140, 40, 400),
     particleCount: num(source.particleCount, base.particleCount ?? 28, 8, 80),
     trailLength: num(source.trailLength, base.trailLength ?? 8, 2, 24),

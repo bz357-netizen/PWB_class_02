@@ -1,1 +1,7 @@
-{}
+{
+  "alwaysUpdateLinks": true,
+  "userIgnoreFilters": [
+    "my-react-app/node_modules/",
+    "my-react-app/dist/"
+  ]
+}
