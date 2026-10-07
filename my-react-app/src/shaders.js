@@ -14,7 +14,7 @@ export const SHADER_STRATEGIES = [
   {
     id: 'slope',
     label: 'Slope',
-    why: 'Steep faces go dark, flats stay green. Erosion and snow both key off slope, and the normal is already on the mesh.',
+    why: 'Steep faces go black, flats stay paper. The ink sits in the folds of the slope.',
   },
   {
     id: 'contours',
@@ -116,24 +116,48 @@ ${UNKNOWN_LIB}
 float shade() {
   vec3 n = normalize(vNormal);
   float lambert = clamp(dot(n, normalize(uSun)), 0.0, 1.0);
-  return 0.38 + 0.62 * lambert;
+  return 0.78 + 0.22 * lambert;
 }
 
 float height01() {
   return clamp((vWorld.y - uLow) / max(0.001, uHigh - uLow), 0.0, 1.0);
 }
 
+float inkHash(vec2 p) {
+  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+float inkNoise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  float a = inkHash(i);
+  float b = inkHash(i + vec2(1.0, 0.0));
+  float c = inkHash(i + vec2(0.0, 1.0));
+  float d = inkHash(i + vec2(1.0, 1.0));
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
 vec3 elevationColor(float h) {
-  vec3 low = vec3(0.20, 0.40, 0.32);
-  vec3 mid = vec3(0.52, 0.68, 0.30);
-  vec3 high = vec3(0.90, 0.88, 0.78);
-  vec3 col = mix(low, mid, smoothstep(0.12, 0.55, h));
-  return mix(col, high, smoothstep(0.5, 0.95, h));
+  vec3 meadow = vec3(0.84, 0.93, 0.66);
+  vec3 grass = vec3(0.66, 0.86, 0.48);
+  vec3 leaf = vec3(0.52, 0.76, 0.40);
+  vec3 hill = vec3(0.64, 0.82, 0.46);
+  vec3 col = mix(meadow, grass, smoothstep(0.0, 0.32, h));
+  col = mix(col, leaf, smoothstep(0.26, 0.62, h));
+  col = mix(col, hill, smoothstep(0.55, 0.95, h));
+  float blot = inkNoise(vWorld.xz * 0.18);
+  float grain = inkNoise(vWorld.xz * 2.4);
+  col = mix(col, vec3(0.42, 0.64, 0.34), blot * blot * 0.16 * smoothstep(0.12, 0.7, h));
+  col += (grain - 0.5) * vec3(0.02, 0.035, 0.015);
+  float steep = 1.0 - clamp(normalize(vNormal).y, 0.0, 1.0);
+  col = mix(col, vec3(0.40, 0.58, 0.32), smoothstep(0.18, 0.52, steep) * 0.55);
+  return col;
 }
 
 vec3 fogged(vec3 col) {
   float fog = 1.0 - exp(-uFog * length(vWorld - cameraPosition));
-  return mix(col, uSky, clamp(fog, 0.0, 0.82));
+  return mix(col, uSky, clamp(fog, 0.0, 0.88));
 }
 `
 
@@ -147,9 +171,9 @@ void main() {
   slope: /* glsl */ `
 void main() {
   float steep = 1.0 - clamp(normalize(vNormal).y, 0.0, 1.0);
-  vec3 flatC = vec3(0.36, 0.70, 0.30);
-  vec3 midC = vec3(0.72, 0.46, 0.20);
-  vec3 cliff = vec3(0.42, 0.30, 0.26);
+  vec3 flatC = vec3(0.80, 0.91, 0.60);
+  vec3 midC = vec3(0.56, 0.78, 0.42);
+  vec3 cliff = vec3(0.38, 0.56, 0.30);
   vec3 col = mix(flatC, midC, smoothstep(0.015, 0.16, steep));
   col = mix(col, cliff, smoothstep(0.16, 0.42, steep));
   gl_FragColor = vec4(fogged(col * shade()), 1.0);
@@ -163,7 +187,7 @@ void main() {
   float line = 1.0 - smoothstep(0.0, 0.07, edge);
   float majorEdge = abs(fract(cells / 5.0) - 0.5);
   float major = 1.0 - smoothstep(0.0, 0.1, majorEdge);
-  col = mix(col, vec3(0.08, 0.12, 0.10), clamp(line * 0.75 + major * 0.35, 0.0, 1.0));
+  col = mix(col, vec3(0.08, 0.07, 0.06), clamp(line * 0.75 + major * 0.35, 0.0, 1.0));
   gl_FragColor = vec4(fogged(col * shade()), 1.0);
 }
 `,
@@ -178,7 +202,7 @@ void main() {
   float streaks = fract(along * max(0.5, uSpacing) + uTime * 0.15);
   float line = smoothstep(0.62, 0.95, streaks) * smoothstep(0.04, 0.2, steep);
   vec3 ground = elevationColor(height01());
-  vec3 flow = vec3(0.18, 0.48, 0.66);
+  vec3 flow = vec3(0.12, 0.11, 0.10);
   vec3 col = mix(ground, flow, line);
   gl_FragColor = vec4(fogged(col * shade()), 1.0);
 }
@@ -191,10 +215,10 @@ void main() {
   float shore = exp(-abs(vWorld.y - uWater) * 14.0);
   float ripple = sin(vWorld.x * 1.7 + vWorld.z * 1.15 + uTime * 1.4);
   ripple += sin(vWorld.x * 0.45 - vWorld.z * 0.7 - uTime * 0.6);
-  vec3 water = vec3(0.14, 0.36, 0.46) * (0.82 + 0.18 * ripple);
-  water *= 0.72 + 0.28 * shade();
+  vec3 water = vec3(0.78, 0.76, 0.71) * (0.9 + 0.1 * ripple);
+  water *= 0.86 + 0.14 * shade();
   vec3 col = mix(land, water, wet);
-  col = mix(col, vec3(0.88, 0.94, 0.92), shore * (1.0 - wet) * 0.85);
+  col = mix(col, vec3(0.16, 0.15, 0.13), shore * (1.0 - wet) * 0.7);
   gl_FragColor = vec4(fogged(col), 1.0);
 }
 `,
@@ -267,7 +291,7 @@ void main() {
 function uniforms() {
   return {
     uSun: { value: new THREE.Vector3(0.4, 0.85, 0.25) },
-    uSky: { value: new THREE.Color(0xeef6ec) },
+    uSky: { value: new THREE.Color(0xf4efe6) },
     uLow: { value: 0 },
     uHigh: { value: 1 },
     uTime: { value: 0 },

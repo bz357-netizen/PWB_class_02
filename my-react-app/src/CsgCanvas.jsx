@@ -31,14 +31,14 @@ export default function CsgCanvas({ paramsRef, onStats }) {
     if (!mount) return
 
     const scene = new THREE.Scene()
-    scene.fog = new THREE.FogExp2(0xeef6ec, 0.008)
+    scene.fog = new THREE.FogExp2(0xf4efe6, 0.008)
 
     const camera = new THREE.PerspectiveCamera(48, 1, 0.4, 400)
     camera.position.set(18, 16, 36)
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-    renderer.setClearColor(0xeef6ec, 1)
+    renderer.setClearColor(0xf4efe6, 1)
     renderer.outputColorSpace = THREE.SRGBColorSpace
     renderer.toneMapping = THREE.ACESFilmicToneMapping
     renderer.toneMappingExposure = 0.98
@@ -55,11 +55,11 @@ export default function CsgCanvas({ paramsRef, onStats }) {
     controls.rotateSpeed = 0.7
     controls.zoomSpeed = 0.85
 
-    const hemi = new THREE.HemisphereLight(0xf4faf2, 0x5e9a58, 0.72)
+    const hemi = new THREE.HemisphereLight(0xf7f3ea, 0x6e6a62, 0.72)
     scene.add(hemi)
-    const ambient = new THREE.AmbientLight(0xdcefd4, 0.4)
+    const ambient = new THREE.AmbientLight(0xefe8dc, 0.4)
     scene.add(ambient)
-    const bounce = new THREE.DirectionalLight(0xcfe8c8, 0.32)
+    const bounce = new THREE.DirectionalLight(0xe4ddd0, 0.32)
     bounce.position.set(-16, 10, -12)
     scene.add(bounce)
     const sun = new THREE.DirectionalLight(0xfff1c2, 1.6)
@@ -104,7 +104,7 @@ export default function CsgCanvas({ paramsRef, onStats }) {
     const geom = new THREE.BufferGeometry()
     const solidMat = new THREE.MeshLambertMaterial({ vertexColors: true, fog: true })
     const lineMat = new THREE.MeshBasicMaterial({
-      color: 0x2f6b38,
+      color: 0x2a2824,
       wireframe: true,
       transparent: true,
       opacity: 0.7,
@@ -145,9 +145,9 @@ export default function CsgCanvas({ paramsRef, onStats }) {
       ambient.intensity = day.ambient
       hemi.intensity = day.hemi
       hemi.color.copy(day.sky).lerp(new THREE.Color(0xffffff), 0.45)
-      hemi.groundColor.set(0x5e9a58)
+      hemi.groundColor.set(0x6e6a62)
       bounce.intensity = day.ambient * 0.85
-      bounce.color.copy(day.sky).lerp(new THREE.Color(0xe8f4dc), 0.2)
+      bounce.color.copy(day.sky).lerp(new THREE.Color(0xe8e2d4), 0.2)
       scene.fog.color.copy(day.sky)
       scene.fog.density = day.fogDensity
       renderer.setClearColor(day.sky, 1)

@@ -92,8 +92,8 @@ function writeVoxels(mesh, dummy, color, params) {
 
         const isTop = y >= stacks - 1
         const [r, g, b] = landColor(landT, slope, x, z)
-        const cliff = [0.18, 0.36, 0.2]
-        const soil = [0.42, 0.36, 0.22]
+        const cliff = [0.12, 0.11, 0.1]
+        const soil = [0.28, 0.26, 0.23]
         let cr = r
         let cg = g
         let cb = b
@@ -124,14 +124,14 @@ export default function VoxelCanvas({ paramsRef }) {
     if (!mount) return
 
     const scene = new THREE.Scene()
-    scene.fog = new THREE.FogExp2(0xeef6ec, 0.005)
+    scene.fog = new THREE.FogExp2(0xf4efe6, 0.005)
 
     const camera = new THREE.PerspectiveCamera(48, 1, 0.4, 400)
     camera.position.set(0, 28, 54)
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-    renderer.setClearColor(0xeef6ec, 1)
+    renderer.setClearColor(0xf4efe6, 1)
     renderer.outputColorSpace = THREE.SRGBColorSpace
     renderer.toneMapping = THREE.ACESFilmicToneMapping
     renderer.toneMappingExposure = 0.98
@@ -148,11 +148,11 @@ export default function VoxelCanvas({ paramsRef }) {
     controls.rotateSpeed = 0.7
     controls.zoomSpeed = 0.85
 
-    const hemi = new THREE.HemisphereLight(0xf4faf2, 0x5e9a58, 0.72)
+    const hemi = new THREE.HemisphereLight(0xf7f3ea, 0x6e6a62, 0.72)
     scene.add(hemi)
-    const ambient = new THREE.AmbientLight(0xdcefd4, 0.4)
+    const ambient = new THREE.AmbientLight(0xefe8dc, 0.4)
     scene.add(ambient)
-    const bounce = new THREE.DirectionalLight(0xcfe8c8, 0.32)
+    const bounce = new THREE.DirectionalLight(0xe4ddd0, 0.32)
     bounce.position.set(-16, 10, -12)
     scene.add(bounce)
     const sun = new THREE.DirectionalLight(0xfff1c2, 1.6)
@@ -213,7 +213,7 @@ export default function VoxelCanvas({ paramsRef }) {
       fog: true,
     })
     const lineMat = new THREE.MeshBasicMaterial({
-      color: 0x2f6b38,
+      color: 0x2a2824,
       wireframe: true,
       transparent: true,
       opacity: 0.55,
@@ -248,9 +248,9 @@ export default function VoxelCanvas({ paramsRef }) {
       ambient.intensity = day.ambient
       hemi.intensity = day.hemi
       hemi.color.copy(day.sky).lerp(new THREE.Color(0xffffff), 0.45)
-      hemi.groundColor.set(0x5e9a58)
+      hemi.groundColor.set(0x6e6a62)
       bounce.intensity = day.ambient * 0.85
-      bounce.color.copy(day.sky).lerp(new THREE.Color(0xe8f4dc), 0.2)
+      bounce.color.copy(day.sky).lerp(new THREE.Color(0xe8e2d4), 0.2)
       scene.fog.color.copy(day.sky)
       scene.fog.density = day.fogDensity
       renderer.setClearColor(day.sky, 1)

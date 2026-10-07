@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { GRID_SIZE, perlin2 } from './noise.js'
+import { attachWaterRipples } from './waterRipple.js'
 import {
   blankParts,
   consume,
@@ -537,7 +538,7 @@ export function createScatterView(scene) {
     meshes[spec.id] = mesh
   }
 
-  const waterGeom = new THREE.PlaneGeometry(GRID_SIZE, GRID_SIZE)
+  const waterGeom = new THREE.PlaneGeometry(GRID_SIZE, GRID_SIZE, 160, 160)
   waterGeom.rotateX(-Math.PI / 2)
   const waterMat = new THREE.MeshStandardMaterial({
     color: 0x1a568f,
@@ -547,6 +548,7 @@ export function createScatterView(scene) {
     metalness: 0.04,
     depthWrite: false,
   })
+  const ripples = attachWaterRipples(waterMat)
   const waterMesh = new THREE.Mesh(waterGeom, waterMat)
   waterMesh.receiveShadow = true
   waterMesh.renderOrder = 2
@@ -586,6 +588,7 @@ export function createScatterView(scene) {
 
   const tick = ({ elapsed, waterY, submerge: under, erode: eat, unknown: glitch, low: y0, high: y1, showWater }) => {
     time.value = elapsed
+    ripples.setTime(elapsed)
     water.value = waterY ?? 0.15
     submerge.value = under ? 1 : 0
     erode.value = eat ?? 0.42
@@ -624,5 +627,5 @@ export function createScatterView(scene) {
     }
   }
 
-  return { group, sync, tick, dispose }
+  return { group, sync, tick, dispose, waterMesh, ripples }
 }

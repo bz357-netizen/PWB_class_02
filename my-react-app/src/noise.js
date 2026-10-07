@@ -525,32 +525,27 @@ function mix3(a, b, t) {
   return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]
 }
 
-/** Illustration-style hillside: mint valleys, cream groves, deep leaf ridges. */
+/** Light meadow green. Valleys stay pale, ridges stay green. */
 export function landColor(elev, steep, x, z) {
-  const mint = [0.82, 0.92, 0.78]
-  const sage = [0.55, 0.78, 0.48]
-  const leaf = [0.32, 0.64, 0.34]
-  const canopy = [0.16, 0.48, 0.24]
-  const fold = [0.1, 0.32, 0.16]
-  const cream = [0.96, 0.9, 0.62]
-  const pale = [0.9, 0.95, 0.84]
+  const paper = [0.84, 0.93, 0.66]
+  const wash = [0.66, 0.86, 0.48]
+  const mid = [0.52, 0.76, 0.4]
+  const ink = [0.64, 0.82, 0.46]
+  const black = [0.4, 0.58, 0.32]
 
   let rgb
-  if (elev < 0.22) rgb = mix3(pale, sage, elev / 0.22)
-  else if (elev < 0.48) rgb = mix3(sage, leaf, (elev - 0.22) / 0.26)
-  else if (elev < 0.72) rgb = mix3(leaf, canopy, (elev - 0.48) / 0.24)
-  else rgb = mix3(canopy, fold, Math.min(1, (elev - 0.72) / 0.28))
+  if (elev < 0.2) rgb = mix3(paper, wash, elev / 0.2)
+  else if (elev < 0.48) rgb = mix3(wash, mid, (elev - 0.2) / 0.28)
+  else if (elev < 0.74) rgb = mix3(mid, ink, (elev - 0.48) / 0.26)
+  else rgb = mix3(ink, black, Math.min(1, (elev - 0.74) / 0.26))
 
-  const grove = perlin2(x * 0.08, z * 0.08) * 0.5 + 0.5
-  const speck = perlin2(x * 0.38 + 9.1, z * 0.38 - 4.3) * 0.5 + 0.5
-  const bloom =
-    grove > 0.46 && steep < 0.48 && elev > 0.16 && elev < 0.78
-      ? Math.min(1, (grove - 0.46) / 0.26) * (1 - steep * 0.8)
-      : 0
-  rgb = mix3(rgb, cream, bloom * (0.55 + speck * 0.35))
-  rgb = mix3(rgb, leaf, Math.max(0, speck - 0.42) * 0.35)
-  rgb = mix3(rgb, fold, Math.min(1, steep * 0.7))
-  return rgb
+  const blot = perlin2(x * 0.09, z * 0.09) * 0.5 + 0.5
+  const grain = perlin2(x * 0.42 + 3.2, z * 0.42 - 1.4) * 0.5 + 0.5
+  rgb = mix3(rgb, ink, Math.max(0, blot - 0.55) * 0.45 * elev)
+  rgb = mix3(rgb, paper, Math.max(0, 0.38 - blot) * 0.35 * (1 - elev))
+  rgb = mix3(rgb, black, Math.min(1, steep * 1.15))
+  const fleck = (grain - 0.5) * 0.06
+  return [rgb[0] + fleck, rgb[1] + fleck, rgb[2] + fleck]
 }
 
 export function applyNoiseToGrid(geometry, params) {

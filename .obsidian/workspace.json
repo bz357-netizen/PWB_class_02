@@ -188,8 +188,9 @@
       "bases:Create new base": false
     }
   },
-  "active": "cbe5a69096f291b2",
+  "active": "ae7b707cdd7cd39f",
   "lastOpenFiles": [
+    "my-react-app/src/waterRipple.js",
     "my-react-app/src/assets/hero.png",
     "my-react-app/src/assets/vite.svg",
     "my-react-app/src/assets/react.svg",
@@ -208,7 +209,6 @@
     "Pasted image 20260930114152.png",
     "Pasted image 20260930114428.png",
     "Pasted image 20260930114119.png",
-    "Pasted image 20260930114123.png",
     "NOTEBOOK/sessions/README.md",
     "my-react-app/firebase-debug.log",
     "my-react-app/dist/assets/index-BThh0CaF.js",

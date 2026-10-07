@@ -320,6 +320,37 @@ export default function GalaxyCanvas({ paramsRef, onScatterStats }) {
     resize()
     window.addEventListener('resize', resize)
 
+    const pointer = { down: false, over: false, nx: 0, ny: 0, distance: Infinity }
+    const pointerNdc = new THREE.Vector2()
+    const raycaster = new THREE.Raycaster()
+    const readPointer = (event) => {
+      const rect = renderer.domElement.getBoundingClientRect()
+      pointer.nx = ((event.clientX - rect.left) / rect.width) * 2 - 1
+      pointer.ny = -((event.clientY - rect.top) / rect.height) * 2 + 1
+      pointerNdc.set(pointer.nx, pointer.ny)
+      pointer.over = true
+    }
+    const onPointerMove = (event) => {
+      readPointer(event)
+    }
+    const onPointerDown = (event) => {
+      if (event.button !== 0) return
+      readPointer(event)
+      pointer.down = true
+    }
+    const onPointerUp = (event) => {
+      if (event.button === 0) pointer.down = false
+    }
+    const onPointerLeave = () => {
+      pointer.over = false
+      pointer.down = false
+    }
+    renderer.domElement.addEventListener('pointermove', onPointerMove)
+    renderer.domElement.addEventListener('pointerdown', onPointerDown)
+    renderer.domElement.addEventListener('pointerup', onPointerUp)
+    renderer.domElement.addEventListener('pointerleave', onPointerLeave)
+    window.addEventListener('pointerup', onPointerUp)
+
     let frameId = 0
     const started = performance.now()
     const animate = () => {
@@ -347,11 +378,12 @@ export default function GalaxyCanvas({ paramsRef, onScatterStats }) {
       syncLiving(params)
       const deforming = DEFORMING_EVENTS.has(params.simEvent)
       scatterView.group.visible = !deforming
+      const elapsed = (performance.now() - started) / 1000
       if (!deforming && noiseKey) {
         const counts = scatterView.sync(gridGeom, params, `${noiseKey}|${lastSegments}`)
         if (counts) onScatterStatsRef.current?.(counts)
         scatterView.tick({
-          elapsed: (performance.now() - started) / 1000,
+          elapsed,
           waterY: params.shaderWater ?? 0.15,
           submerge: 0,
           erode: 0,
@@ -360,6 +392,18 @@ export default function GalaxyCanvas({ paramsRef, onScatterStats }) {
           high: 1,
           showWater: true,
         })
+      }
+      const waterVisible = scatterView.group.visible && scatterView.waterMesh.visible
+      if (pointer.over && pointer.down && waterVisible) {
+        raycaster.setFromCamera(pointerNdc, camera)
+        const landHits = raycaster.intersectObject(grid, false)
+        const waterHits = raycaster.intersectObject(scatterView.waterMesh, false)
+        const landDistance = landHits.length ? landHits[0].distance : Infinity
+        const onWater = waterHits.length > 0 && waterHits[0].distance <= landDistance + 0.05
+        if (onWater) scatterView.ripples.stroke(waterHits[0].point.x, waterHits[0].point.z, elapsed)
+        else scatterView.ripples.release()
+      } else {
+        scatterView.ripples.release()
       }
       const filled = params.showMesh !== false
       grid.visible = filled
@@ -392,6 +436,11 @@ export default function GalaxyCanvas({ paramsRef, onScatterStats }) {
     return () => {
       cancelAnimationFrame(frameId)
       window.removeEventListener('resize', resize)
+      window.removeEventListener('pointerup', onPointerUp)
+      renderer.domElement.removeEventListener('pointermove', onPointerMove)
+      renderer.domElement.removeEventListener('pointerdown', onPointerDown)
+      renderer.domElement.removeEventListener('pointerup', onPointerUp)
+      renderer.domElement.removeEventListener('pointerleave', onPointerLeave)
       scatterView.dispose()
       controls.dispose()
       fieldGeom.dispose()

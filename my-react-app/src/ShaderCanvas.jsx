@@ -177,7 +177,7 @@ export default function ShaderCanvas({ paramsRef, onScatterStats }) {
     const flow = createFlowLayer()
     scene.add(flow.group)
     const honeyPoint = { x: 2, y: 0.2, z: 2 }
-    const pointer = { hit: false, down: false, x: 0, y: 0, z: 0 }
+    const pointer = { hit: false, down: false, x: 0, y: 0, z: 0, distance: Infinity }
     const raycaster = new THREE.Raycaster()
     const pointerNdc = new THREE.Vector2()
     let pointerOver = false
@@ -236,7 +236,12 @@ export default function ShaderCanvas({ paramsRef, onScatterStats }) {
       pointerOver = true
     }
     const onPointerDown = (event) => {
-      if (event.button === 0) pointer.down = true
+      if (event.button !== 0) return
+      const rect = renderer.domElement.getBoundingClientRect()
+      pointerNdc.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
+      pointerNdc.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
+      pointerOver = true
+      pointer.down = true
     }
     const onPointerUp = (event) => {
       if (event.button === 0) pointer.down = false
@@ -246,10 +251,14 @@ export default function ShaderCanvas({ paramsRef, onScatterStats }) {
       pointer.hit = false
       pointer.down = false
     }
+    const onWindowUp = (event) => {
+      if (event.button === 0) pointer.down = false
+    }
     renderer.domElement.addEventListener('pointermove', onPointerMove)
     renderer.domElement.addEventListener('pointerdown', onPointerDown)
     renderer.domElement.addEventListener('pointerup', onPointerUp)
     renderer.domElement.addEventListener('pointerleave', onPointerLeave)
+    window.addEventListener('pointerup', onWindowUp)
 
     let noiseKey = ''
     let frameId = 0
@@ -405,9 +414,24 @@ export default function ShaderCanvas({ paramsRef, onScatterStats }) {
           pointer.x = hits[0].point.x
           pointer.y = hits[0].point.y
           pointer.z = hits[0].point.z
+          pointer.distance = hits[0].distance
         } else {
           pointer.hit = false
+          pointer.distance = Infinity
         }
+      }
+
+      const waterVisible = scatterView.group.visible && scatterView.waterMesh.visible
+      if (pointerOver && pointer.down && waterVisible) {
+        raycaster.setFromCamera(pointerNdc, camera)
+        const waterHits = raycaster.intersectObject(scatterView.waterMesh, false)
+        const onWater = waterHits.length > 0 && waterHits[0].distance <= pointer.distance + 0.05
+        if (onWater) {
+          pointer.hit = false
+          scatterView.ripples.stroke(waterHits[0].point.x, waterHits[0].point.z, elapsed)
+        } else scatterView.ripples.release()
+      } else {
+        scatterView.ripples.release()
       }
 
       const now = performance.now()
@@ -439,6 +463,7 @@ export default function ShaderCanvas({ paramsRef, onScatterStats }) {
       renderer.domElement.removeEventListener('pointerdown', onPointerDown)
       renderer.domElement.removeEventListener('pointerup', onPointerUp)
       renderer.domElement.removeEventListener('pointerleave', onPointerLeave)
+      window.removeEventListener('pointerup', onWindowUp)
       flow.dispose()
       controls.dispose()
       gridGeom.dispose()
