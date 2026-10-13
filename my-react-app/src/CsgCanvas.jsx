@@ -6,6 +6,7 @@ import { GRID_SIZE } from './noise.js'
 import { getDaylight } from './daylight.js'
 import { csgFingerprint } from './density.js'
 import { buildVolume } from './meshing.js'
+import { applyHandOrbit } from './handOrbit.js'
 
 function csgKey(params) {
   return `${csgFingerprint(params)}|${Math.round(params.csgCells ?? 28)}|${params.meshMode ?? 'marching'}`
@@ -198,6 +199,7 @@ export default function CsgCanvas({ paramsRef, onStats }) {
         pos.needsUpdate = true
       }
 
+      applyHandOrbit(controls)
       controls.update()
       renderer.render(scene, camera)
       frameId = requestAnimationFrame(animate)

@@ -5,7 +5,10 @@ import CsgCanvas from './CsgCanvas.jsx'
 import ShaderCanvas from './ShaderCanvas.jsx'
 import NoiseMap2D from './NoiseMap2D.jsx'
 import DensitySlice from './DensitySlice.jsx'
-import AccountPanel from './AccountPanel.jsx'
+import AccountMenu from './AccountMenu.jsx'
+import HandPanel from './HandPanel.jsx'
+import SignInScreen from './SignInScreen.jsx'
+import { useAuth } from './useAuth.js'
 import {
   BLEND_OPS,
   MAX_NOISE_LAYERS,
@@ -259,7 +262,7 @@ function formatClock(value) {
   return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`
 }
 
-function App() {
+function World({ user }) {
   const paramsRef = useRef({
     ...initialParams,
     layers: initialParams.layers.map((layer) => ({ ...layer })),
@@ -275,6 +278,8 @@ function App() {
   const [view, setView] = useState(() =>
     typeof window !== 'undefined' ? viewFromHash(window.location.hash) : 'field',
   )
+  const [panels, setPanels] = useState({ hand: false, controls: false, noise: false })
+  const togglePanel = (key) => setPanels((current) => ({ ...current, [key]: !current[key] }))
 
   useEffect(() => {
     const onHash = () => setView(viewFromHash(window.location.hash))
@@ -435,14 +440,6 @@ function App() {
 
   return (
     <div className="app">
-      <AccountPanel
-        params={params}
-        baseParams={initialParams}
-        onRestore={(next) => {
-          commit(next)
-          setSelected(0)
-        }}
-      />
       {view === 'csg' ? (
         <CsgCanvas paramsRef={paramsRef} onStats={setVolumeStats} />
       ) : view === 'voxel' ? (
@@ -454,14 +451,14 @@ function App() {
       )}
 
       <div className="hud">
+        <div className="topbar">
         <header className="title-block">
-          <p className="kicker">
-            <span className="tick is-live" aria-hidden="true" />
-            PWB Class
-          </p>
-          <h1>{title}</h1>
-          <p className="hint">{hint}</p>
-          <nav className="view-tabs" aria-label="Scene">
+          <div className="title-row">
+            <p className="kicker">
+              <span className="tick is-live" aria-hidden="true" />
+              PWB Class
+            </p>
+            <nav className="view-tabs" aria-label="Scene">
             <button
               type="button"
               className={view === 'field' ? 'is-on' : ''}
@@ -491,6 +488,9 @@ function App() {
               Shaders
             </button>
           </nav>
+          </div>
+          <h1>{title}</h1>
+          <p className="hint">{hint}</p>
           <p className="telemetry">
             <span>
               T <b>{formatClock(params.timeOfDay)}</b>
@@ -520,15 +520,57 @@ function App() {
             </span>
           </p>
         </header>
+        <AccountMenu
+          user={user}
+          params={params}
+          baseParams={initialParams}
+          onRestore={(next) => {
+            commit(next)
+            setSelected(0)
+          }}
+        />
+        </div>
 
-        {view === 'csg' ? (
-          <DensitySlice params={params} selected={Math.min(selected, Math.max(0, solids.length - 1))} />
+        {panels.noise ? (
+          view === 'csg' ? (
+            <DensitySlice
+              params={params}
+              selected={Math.min(selected, Math.max(0, solids.length - 1))}
+              onHide={() => togglePanel('noise')}
+            />
+          ) : (
+            <NoiseMap2D params={params} selected={selected} onHide={() => togglePanel('noise')} />
+          )
         ) : (
-          <NoiseMap2D params={params} selected={selected} />
+          <button type="button" className="dock-tab is-noise" onClick={() => togglePanel('noise')}>
+            {view === 'csg' ? 'Density' : '2D Noise'}
+          </button>
         )}
 
+        {panels.hand ? (
+          <HandPanel
+            sculptable={view === 'field' || view === 'shaders'}
+            flush={!panels.controls}
+            onHide={() => togglePanel('hand')}
+          />
+        ) : (
+          <button
+            type="button"
+            className={`dock-tab is-hand${panels.controls ? ' is-beside' : ''}`}
+            onClick={() => togglePanel('hand')}
+          >
+            Hand
+          </button>
+        )}
+
+        {panels.controls ? (
         <aside className="side-panel panel-frame" aria-label="Scene controls">
-          <h2>Controls</h2>
+          <div className="panel-head">
+            <h2>Controls</h2>
+            <button type="button" className="panel-hide" onClick={() => togglePanel('controls')}>
+              Hide
+            </button>
+          </div>
           <p className="panel-note">Hover a label for help.</p>
 
           {view === 'field' ? (
@@ -1196,9 +1238,22 @@ function App() {
           </PanelSection>
           )}
         </aside>
+        ) : (
+          <button
+            type="button"
+            className={`dock-tab is-controls${panels.hand ? ' is-beside' : ''}`}
+            onClick={() => togglePanel('controls')}
+          >
+            Controls
+          </button>
+        )}
       </div>
     </div>
   )
 }
 
-export default App
+export default function App() {
+  const session = useAuth()
+  if (!session.ready || !session.user) return <SignInScreen session={session} />
+  return <World user={session.user} />
+}

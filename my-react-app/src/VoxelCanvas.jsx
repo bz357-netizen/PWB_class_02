@@ -9,6 +9,7 @@ import {
   sampleHeight,
 } from './noise.js'
 import { getDaylight } from './daylight.js'
+import { applyHandOrbit } from './handOrbit.js'
 
 const MAX_STACK = 24
 const RELIEF = 18
@@ -302,6 +303,7 @@ export default function VoxelCanvas({ paramsRef }) {
         pos.needsUpdate = true
       }
 
+      applyHandOrbit(controls)
       controls.update()
       renderer.render(scene, camera)
       frameId = requestAnimationFrame(animate)

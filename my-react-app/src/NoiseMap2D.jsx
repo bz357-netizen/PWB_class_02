@@ -68,7 +68,7 @@ function paintField(canvas, values, size, palette) {
   ctx.putImageData(image, 0, 0)
 }
 
-export default function NoiseMap2D({ params, selected = 0 }) {
+export default function NoiseMap2D({ params, selected = 0, onHide }) {
   const canvasRef = useRef(null)
   const simARef = useRef(null)
   const simBRef = useRef(null)
@@ -149,7 +149,14 @@ export default function NoiseMap2D({ params, selected = 0 }) {
 
   return (
     <aside className="noise-panel panel-frame" aria-label="2D noise field">
-      <h2>{eventOn ? 'Sim map' : '2D noise'}</h2>
+      <div className="panel-head">
+        <h2>{eventOn ? 'Sim map' : '2D noise'}</h2>
+        {onHide ? (
+          <button type="button" className="panel-hide" onClick={onHide}>
+            Hide
+          </button>
+        ) : null}
+      </div>
       <p className="panel-note equation">{title}</p>
       <p className="panel-note">
         {eventOn

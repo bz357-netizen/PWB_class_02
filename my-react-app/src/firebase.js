@@ -1,7 +1,18 @@
 import { initializeApp } from 'firebase/app'
-import { getAuth } from 'firebase/auth'
+import { browserLocalPersistence, getAuth, setPersistence } from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
 import { getStorage } from 'firebase/storage'
+
+const CONFIG_KEYS = [
+  'VITE_FIREBASE_API_KEY',
+  'VITE_FIREBASE_AUTH_DOMAIN',
+  'VITE_FIREBASE_PROJECT_ID',
+  'VITE_FIREBASE_STORAGE_BUCKET',
+  'VITE_FIREBASE_MESSAGING_SENDER_ID',
+  'VITE_FIREBASE_APP_ID',
+]
+
+export const missingFirebaseConfig = CONFIG_KEYS.filter((key) => !import.meta.env[key])
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -12,8 +23,12 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 }
 
-const app = initializeApp(firebaseConfig)
+const app = missingFirebaseConfig.length ? null : initializeApp(firebaseConfig)
 
-export const auth = getAuth(app)
-export const db = getFirestore(app)
-export const storage = getStorage(app)
+export const auth = app ? getAuth(app) : null
+export const db = app ? getFirestore(app) : null
+export const storage = app ? getStorage(app) : null
+
+if (auth) {
+  setPersistence(auth, browserLocalPersistence).catch(() => {})
+}

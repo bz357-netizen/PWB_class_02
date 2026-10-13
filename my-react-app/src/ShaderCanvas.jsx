@@ -7,6 +7,8 @@ import { createStrategyMaterial } from './shaders.js'
 import { createScatterView } from './scatter.js'
 import { buildEnvironmentPaths, buildFilaments, findCore } from './paths.js'
 import { createFlowLayer } from './flowField.js'
+import { createHandCursor, createTerrainSculpt } from './terrainSculpt.js'
+import { applyHandOrbit } from './handOrbit.js'
 
 function createGridGeometry(segments) {
   const segs = Math.max(2, Math.round(segments))
@@ -115,6 +117,13 @@ export default function ShaderCanvas({ paramsRef, onScatterStats }) {
     grid.castShadow = true
     grid.receiveShadow = true
     scene.add(grid)
+    const handCursors = {
+      left: createHandCursor('left'),
+      right: createHandCursor('right'),
+    }
+    scene.add(handCursors.left, handCursors.right)
+    const sculpt = createTerrainSculpt()
+    const handNdc = new THREE.Vector2()
 
     const scatterView = createScatterView(scene)
 
@@ -278,6 +287,7 @@ export default function ShaderCanvas({ paramsRef, onScatterStats }) {
         }
         noiseKey = nextKey
         applyNoiseToGrid(gridGeom, params)
+        sculpt.rebase(gridGeom)
         range = heightRange(gridGeom)
       }
 
@@ -437,6 +447,7 @@ export default function ShaderCanvas({ paramsRef, onScatterStats }) {
       const now = performance.now()
       const dt = Math.min(0.05, (now - lastTick) / 1000)
       lastTick = now
+      sculpt.step({ grid, camera, raycaster, ndc: handNdc, dt, cursors: handCursors })
       if (noiseKey) {
         flow.update({
           geometry: gridGeom,
@@ -450,6 +461,7 @@ export default function ShaderCanvas({ paramsRef, onScatterStats }) {
         })
       }
 
+      applyHandOrbit(controls)
       controls.update()
       renderer.render(scene, camera)
       frameId = requestAnimationFrame(animate)
@@ -465,6 +477,10 @@ export default function ShaderCanvas({ paramsRef, onScatterStats }) {
       renderer.domElement.removeEventListener('pointerleave', onPointerLeave)
       window.removeEventListener('pointerup', onWindowUp)
       flow.dispose()
+      handCursors.left.geometry.dispose()
+      handCursors.left.material.dispose()
+      handCursors.right.geometry.dispose()
+      handCursors.right.material.dispose()
       controls.dispose()
       gridGeom.dispose()
       material.dispose()

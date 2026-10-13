@@ -4,7 +4,7 @@ import { csgFingerprint, sampleDensity } from './density.js'
 
 const MAP_PX = 160
 
-export default function DensitySlice({ params, selected = 0 }) {
+export default function DensitySlice({ params, selected = 0, onHide }) {
   const canvasRef = useRef(null)
   const solids = params.csgSolids ?? []
   const fingerprint = csgFingerprint(params)
@@ -56,7 +56,14 @@ export default function DensitySlice({ params, selected = 0 }) {
 
   return (
     <aside className="noise-panel panel-frame" aria-label="Density slice">
-      <h2>Density slice</h2>
+      <div className="panel-head">
+        <h2>Density slice</h2>
+        {onHide ? (
+          <button type="button" className="panel-hide" onClick={onHide}>
+            Hide
+          </button>
+        ) : null}
+      </div>
       <p className="panel-note equation">d = op(d, solid) · y = {yCut.toFixed(1)}</p>
       <p className="panel-note">{solids.length} sequential solids · cyan = isosurface</p>
       <canvas ref={canvasRef} className="noise-map" width={MAP_PX} height={MAP_PX} />

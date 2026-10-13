@@ -7,6 +7,8 @@ import { getDaylight } from './daylight.js'
 import { applyEventToGrid } from './eventSim.js'
 import { getLivingLayout } from './livingSim.js'
 import { createScatterView } from './scatter.js'
+import { createHandCursor, createTerrainSculpt } from './terrainSculpt.js'
+import { applyHandOrbit } from './handOrbit.js'
 
 const DEFORMING_EVENTS = new Set(['fire', 'flood', 'snow', 'hydraulic'])
 
@@ -136,6 +138,13 @@ export default function GalaxyCanvas({ paramsRef, onScatterStats }) {
     grid.castShadow = true
     grid.receiveShadow = true
     scene.add(grid)
+    const handCursors = {
+      left: createHandCursor('left'),
+      right: createHandCursor('right'),
+    }
+    scene.add(handCursors.left, handCursors.right)
+    const sculpt = createTerrainSculpt()
+    const handNdc = new THREE.Vector2()
     const scatterView = createScatterView(scene)
 
     const lineMat = new THREE.MeshBasicMaterial({
@@ -373,6 +382,7 @@ export default function GalaxyCanvas({ paramsRef, onScatterStats }) {
         eventKey = nextEvent
         applyNoiseToGrid(gridGeom, params)
         applyEventToGrid(gridGeom, params)
+        sculpt.rebase(gridGeom)
         livingNetKey = ''
       }
       syncLiving(params)
@@ -405,6 +415,10 @@ export default function GalaxyCanvas({ paramsRef, onScatterStats }) {
       } else {
         scatterView.ripples.release()
       }
+      const handNow = performance.now()
+      const handDt = Math.min(0.05, (handNow - (sculpt.stamp || handNow)) / 1000)
+      sculpt.stamp = handNow
+      sculpt.step({ grid, camera, raycaster, ndc: handNdc, dt: handDt, cursors: handCursors })
       const filled = params.showMesh !== false
       grid.visible = filled
       lines.visible = !filled
@@ -427,6 +441,7 @@ export default function GalaxyCanvas({ paramsRef, onScatterStats }) {
         pos.needsUpdate = true
       }
 
+      applyHandOrbit(controls)
       controls.update()
       renderer.render(scene, camera)
       frameId = requestAnimationFrame(animate)
@@ -442,6 +457,10 @@ export default function GalaxyCanvas({ paramsRef, onScatterStats }) {
       renderer.domElement.removeEventListener('pointerup', onPointerUp)
       renderer.domElement.removeEventListener('pointerleave', onPointerLeave)
       scatterView.dispose()
+      handCursors.left.geometry.dispose()
+      handCursors.left.material.dispose()
+      handCursors.right.geometry.dispose()
+      handCursors.right.material.dispose()
       controls.dispose()
       fieldGeom.dispose()
       fieldMat.dispose()
