@@ -2,7 +2,7 @@
 
 [This area](my-react-app/src/assets/README/NOTEBOOK/08-interface/README.md) · [All areas](my-react-app/README.md)
 
-Graphic specification for the **Milky Way** app (`my-react-app`). Use this file as the source of truth for UI. The 3D canvas can stay rich; chrome around it stays sparse, dark, and technical.
+Graphic specification for the **Procedural World Building** app (`my-react-app`). Use this file as the source of truth for UI. The 3D canvas can stay rich; chrome around it stays sparse, dark, and technical.
 
 ![Controls panel using the tokens in this guide](hud-controls.png)
 

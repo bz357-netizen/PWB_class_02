@@ -13,6 +13,16 @@ function poseLabel(side, pose) {
   return '—'
 }
 
+const HINT_KEY = 'pwb-hand-hint-seen'
+
+function readHintSeen() {
+  try {
+    return localStorage.getItem(HINT_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
 export default function HandPanel({ sculptable, onHide, flush = false }) {
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
@@ -24,7 +34,19 @@ export default function HandPanel({ sculptable, onHide, flush = false }) {
   const [sensitivity, setSensitivity] = useState(handSession.sensitivity)
   const [orbit, setOrbit] = useState(handSession.orbit)
   const [reach, setReach] = useState(handSession.reach)
+  const [hintSeen, setHintSeen] = useState(() => readHintSeen())
   const busy = status === 'loading' || status === 'requesting'
+  const showHint =
+    cameraOn && !hintSeen && (status === 'searching' || status === 'tracking')
+
+  const dismissHint = () => {
+    setHintSeen(true)
+    try {
+      localStorage.setItem(HINT_KEY, '1')
+    } catch {
+      // Private browsing can block storage; the hint just shows again next visit.
+    }
+  }
 
   useEffect(() => subscribeHand(() => {
     setStatus(handSession.status)
@@ -56,6 +78,18 @@ export default function HandPanel({ sculptable, onHide, flush = false }) {
   const orbitFill = ((orbit - 0.25) / (2.2 - 0.25)) * 100
 
   return (
+    <>
+    {showHint ? (
+      <div className="hand-hint" role="status">
+        <span>
+          <b>Left open palm:</b> turn the view. <b>Right open palm:</b> aim the ring.{' '}
+          <b>Right fist:</b> move up to raise, down to dig.
+        </span>
+        <button type="button" onClick={dismissHint}>
+          Got it
+        </button>
+      </div>
+    ) : null}
     <aside className={`hand-panel${flush ? ' is-flush' : ''}`} aria-label="Hand tracking">
       <div className="hand-head">
         <h2>Hand</h2>
@@ -158,5 +192,6 @@ export default function HandPanel({ sculptable, onHide, flush = false }) {
           : 'The left hand can still orbit the view. Open Field or Shaders to sculpt the terrain.'}
       </p>
     </aside>
+    </>
   )
 }

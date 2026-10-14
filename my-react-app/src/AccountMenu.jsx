@@ -4,7 +4,40 @@ import { auth } from './firebase.js'
 import { explainAuthError } from './authErrors.js'
 import { deleteSettings, listSettings, restoreParams, saveSettings } from './userData.js'
 
-export default function AccountMenu({ user, params, baseParams, onRestore }) {
+function GuestMenu({ onSignIn }) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <div className="account-menu">
+      <button
+        type="button"
+        className="account-chip"
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        onClick={() => setOpen((value) => !value)}
+      >
+        Guest
+      </button>
+      {open ? (
+        <div className="account-pop" role="dialog" aria-label="Account">
+          <p className="account-email">
+            You are looking around as a guest. Changes are not saved after you leave.
+          </p>
+          <button type="button" className="account-signout" onClick={onSignIn}>
+            Sign in to save
+          </button>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+export default function AccountMenu({ user, onSignIn, ...rest }) {
+  if (!user) return <GuestMenu onSignIn={onSignIn} />
+  return <UserMenu user={user} {...rest} />
+}
+
+function UserMenu({ user, params, baseParams, onRestore }) {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('My terrain')
   const [saves, setSaves] = useState([])

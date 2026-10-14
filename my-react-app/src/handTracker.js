@@ -1,4 +1,3 @@
-import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision'
 import { createHandSlot, handSession, publishHand } from './handSession.js'
 
 const WASM = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.1.0/wasm'
@@ -14,6 +13,7 @@ const SIDES = ['left', 'right']
 const PREVIEW_COLOR = { left: '#b6e39a', right: '#9fd0f2' }
 
 let generation = 0
+let vision = null
 let landmarker = null
 let frameId = 0
 let stream = null
@@ -220,7 +220,7 @@ function drawHands(found) {
     ctx.lineWidth = 3
     ctx.strokeStyle = PREVIEW_COLOR[side]
     ctx.beginPath()
-    for (const link of HandLandmarker.HAND_CONNECTIONS) {
+    for (const link of vision.HandLandmarker.HAND_CONNECTIONS) {
       const start = landmarks[link.start]
       const end = landmarks[link.end]
       if (!start || !end) continue
@@ -300,7 +300,9 @@ function tick() {
 }
 
 async function createLandmarker() {
-  const vision = await FilesetResolver.forVisionTasks(WASM)
+  if (!vision) vision = await import('@mediapipe/tasks-vision')
+  const { FilesetResolver, HandLandmarker } = vision
+  const fileset = await FilesetResolver.forVisionTasks(WASM)
   const shared = {
     runningMode: 'VIDEO',
     numHands: 2,
@@ -309,12 +311,12 @@ async function createLandmarker() {
     minTrackingConfidence: 0.5,
   }
   try {
-    return await HandLandmarker.createFromOptions(vision, {
+    return await HandLandmarker.createFromOptions(fileset, {
       ...shared,
       baseOptions: { modelAssetPath: MODEL, delegate: 'GPU' },
     })
   } catch {
-    return HandLandmarker.createFromOptions(vision, {
+    return HandLandmarker.createFromOptions(fileset, {
       ...shared,
       baseOptions: { modelAssetPath: MODEL, delegate: 'CPU' },
     })

@@ -1,8 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
-import GalaxyCanvas from './GalaxyCanvas.jsx'
-import VoxelCanvas from './VoxelCanvas.jsx'
-import CsgCanvas from './CsgCanvas.jsx'
-import ShaderCanvas from './ShaderCanvas.jsx'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import NoiseMap2D from './NoiseMap2D.jsx'
 import DensitySlice from './DensitySlice.jsx'
 import AccountMenu from './AccountMenu.jsx'
@@ -36,6 +32,11 @@ import { MESH_MODES, getMeshMode } from './meshing.js'
 import { SHADER_STRATEGIES, getShaderStrategy } from './shaders.js'
 import { SCATTER_LAYERS, createScatterParams, describeScatter } from './scatter.js'
 import './App.css'
+
+const GalaxyCanvas = lazy(() => import('./GalaxyCanvas.jsx'))
+const VoxelCanvas = lazy(() => import('./VoxelCanvas.jsx'))
+const CsgCanvas = lazy(() => import('./CsgCanvas.jsx'))
+const ShaderCanvas = lazy(() => import('./ShaderCanvas.jsx'))
 
 const PLANE_RESOLUTIONS = [95, 300, 500, 1000]
 const VOXEL_RESOLUTIONS = [24, 32, 48, 64]
@@ -262,7 +263,7 @@ function formatClock(value) {
   return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`
 }
 
-function World({ user }) {
+function World({ user, onLeaveGuest }) {
   const paramsRef = useRef({
     ...initialParams,
     layers: initialParams.layers.map((layer) => ({ ...layer })),
@@ -440,15 +441,17 @@ function World({ user }) {
 
   return (
     <div className="app">
-      {view === 'csg' ? (
-        <CsgCanvas paramsRef={paramsRef} onStats={setVolumeStats} />
-      ) : view === 'voxel' ? (
-        <VoxelCanvas paramsRef={paramsRef} />
-      ) : view === 'shaders' ? (
-        <ShaderCanvas paramsRef={paramsRef} onScatterStats={setScatterStats} />
-      ) : (
-        <GalaxyCanvas paramsRef={paramsRef} onScatterStats={setScatterStats} />
-      )}
+      <Suspense fallback={<p className="scene-loading">Loading the terrain…</p>}>
+        {view === 'csg' ? (
+          <CsgCanvas paramsRef={paramsRef} onStats={setVolumeStats} />
+        ) : view === 'voxel' ? (
+          <VoxelCanvas paramsRef={paramsRef} />
+        ) : view === 'shaders' ? (
+          <ShaderCanvas paramsRef={paramsRef} onScatterStats={setScatterStats} />
+        ) : (
+          <GalaxyCanvas paramsRef={paramsRef} onScatterStats={setScatterStats} />
+        )}
+      </Suspense>
 
       <div className="hud">
         <div className="topbar">
@@ -522,6 +525,7 @@ function World({ user }) {
         </header>
         <AccountMenu
           user={user}
+          onSignIn={onLeaveGuest}
           params={params}
           baseParams={initialParams}
           onRestore={(next) => {
@@ -1254,6 +1258,8 @@ function World({ user }) {
 
 export default function App() {
   const session = useAuth()
-  if (!session.ready || !session.user) return <SignInScreen session={session} />
-  return <World user={session.user} />
+  const [guest, setGuest] = useState(false)
+  if (session.ready && session.user) return <World user={session.user} />
+  if (session.ready && guest) return <World user={null} onLeaveGuest={() => setGuest(false)} />
+  return <SignInScreen session={session} onGuest={() => setGuest(true)} />
 }
