@@ -8,13 +8,13 @@ let refX = 0
 let refY = 0
 let bound = null
 
-export function applyHandOrbit(controls) {
+export function applyHandOrbit(controls, limits) {
   if (bound !== controls) {
     bound = controls
     engaged = false
   }
-  controls.minPolarAngle = MIN_POLAR
-  controls.maxPolarAngle = MAX_POLAR
+  controls.minPolarAngle = limits?.min ?? MIN_POLAR
+  controls.maxPolarAngle = limits?.max ?? MAX_POLAR
 
   const hand = handSession.hands.left
   const driving = hand.active && !hand.hold && !hand.fist

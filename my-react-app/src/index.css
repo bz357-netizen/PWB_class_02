@@ -1,26 +1,30 @@
 :root {
-  --bg: #07080a;
-  --bg-panel: #0c0e12;
-  --bg-panel-90: #0c0e12e6;
-  --line: #2a3038;
-  --line-dim: #1a1e24;
-  --text: #c8ced6;
-  --text-dim: #7a828c;
-  --text-bright: #e8ecf0;
-  --accent: #3ee0ff;
-  --accent-dim: #3ee0ff33;
+  --bg: #7cc2bc;
+  --bg-panel: #f7f3e8;
+  --bg-panel-90: #f7f3e8f5;
+  --line: #1e2b2b;
+  --line-dim: #d9d1b9;
+  --text: #24302f;
+  --text-dim: #5e6c69;
+  --text-bright: #131b1b;
+  --accent: #1f7a76;
+  --accent-dim: #f2cf55;
+  --ink: #1e2b2b;
+  --sun: #f2cf55;
+  --sun-dark: #c48a3a;
   --font: 'IBM Plex Mono', ui-monospace, 'SF Mono', Consolas, 'Liberation Mono',
     monospace;
+  --font-display: 'Silkscreen', var(--font);
   --text-kicker: 10px;
   --text-title: 18px;
   --text-panel: 11px;
   --text-ui: 11px;
   --text-hint: 10px;
-  --radius: 2px;
+  --radius: 3px;
   --inset: 16px;
   --panel-width: 220px;
   --map-width: 360px;
-  color-scheme: dark;
+  color-scheme: light;
   font-family: var(--font);
 }
 

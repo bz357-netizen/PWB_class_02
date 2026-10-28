@@ -11,9 +11,69 @@ import {
 } from './noise.js'
 import { getSimulationMaps, isSimulatedEquation } from './simulate.js'
 import { getEventSimulation } from './eventSim.js'
+import { planetHeight, rampColor } from './planet.js'
 
 const MAP_PX = 512
 const SIM_PX = 120
+
+function hexRgb(hex) {
+  const value = parseInt(String(hex).slice(1), 16) || 0
+  return [((value >> 16) & 255) / 255, ((value >> 8) & 255) / 255, (value & 255) / 255]
+}
+
+function paintPlanetMap(canvas, params) {
+  const ctx = canvas.getContext('2d')
+  const { width, height } = canvas
+  const heights = new Float32Array(width * height)
+  let min = Infinity
+  let max = -Infinity
+
+  for (let py = 0; py < height; py++) {
+    const lat = (0.5 - py / (height - 1)) * Math.PI
+    const cosLat = Math.cos(lat)
+    const y = Math.sin(lat)
+    for (let px = 0; px < width; px++) {
+      const lon = (px / (width - 1)) * Math.PI * 2 - Math.PI
+      const h = planetHeight(cosLat * Math.cos(lon), y, cosLat * Math.sin(lon), params)
+      heights[py * width + px] = h
+      if (h < min) min = h
+      if (h > max) max = h
+    }
+  }
+
+  const range = max - min || 1
+  const relief = params.planetRelief ?? 0.55
+  const level = params.planetSeaLevel ?? 0
+  const oceanOn = params.planetOcean !== false
+  const foamOn = params.planetFoamOn !== false
+  const band = (params.planetFoamDepth ?? 0.035) * 4
+  const deep = hexRgb(params.planetDeep ?? '#0b3a5c')
+  const shallow = hexRgb(params.planetShallow ?? '#2a9db5')
+  const cover = 1 - (params.planetClarity ?? 0.16) * 0.75
+  const image = ctx.createImageData(width, height)
+  const data = image.data
+
+  for (let k = 0; k < heights.length; k++) {
+    const t = (heights[k] - min) / range
+    let [r, g, b] = rampColor(t, params.planetStops, params.planetStepped)
+    const depth = level - heights[k] * relief
+    if (oceanOn && depth > 0) {
+      const s = foamOn ? Math.min(1, depth / band) : 1
+      const w0 = shallow[0] + (deep[0] - shallow[0]) * s
+      const w1 = shallow[1] + (deep[1] - shallow[1]) * s
+      const w2 = shallow[2] + (deep[2] - shallow[2]) * s
+      r += (w0 - r) * cover
+      g += (w1 - g) * cover
+      b += (w2 - b) * cover
+    }
+    data[k * 4] = r * 255
+    data[k * 4 + 1] = g * 255
+    data[k * 4 + 2] = b * 255
+    data[k * 4 + 3] = 255
+  }
+
+  ctx.putImageData(image, 0, 0)
+}
 
 function paletteColor(t, palette) {
   const u = Math.min(1, Math.max(0, t * 0.5 + 0.5))
@@ -68,7 +128,7 @@ function paintField(canvas, values, size, palette) {
   ctx.putImageData(image, 0, 0)
 }
 
-export default function NoiseMap2D({ params, selected = 0, onHide }) {
+export default function NoiseMap2D({ params, selected = 0, onHide, planet = false }) {
   const canvasRef = useRef(null)
   const simARef = useRef(null)
   const simBRef = useRef(null)
@@ -77,8 +137,8 @@ export default function NoiseMap2D({ params, selected = 0, onHide }) {
     .length
   const fingerprint = noiseFingerprint(params)
   const layer = layers[selected] ?? layers[0]
-  const eventOn = (params.simEvent || 'none') !== 'none'
-  const sim = !eventOn && isSimulatedEquation(layer?.equation)
+  const eventOn = !planet && (params.simEvent || 'none') !== 'none'
+  const sim = !planet && !eventOn && isSimulatedEquation(layer?.equation)
   const equation = getNoiseEquation(layer?.equation)
   const eventResult = eventOn ? getEventSimulation(params) : null
   const simResult = sim ? getSimulationMaps(layer) : null
@@ -87,6 +147,11 @@ export default function NoiseMap2D({ params, selected = 0, onHide }) {
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
+
+    if (planet) {
+      paintPlanetMap(canvas, params)
+      return
+    }
 
     const ctx = canvas.getContext('2d')
     const { width, height } = canvas
@@ -139,18 +204,20 @@ export default function NoiseMap2D({ params, selected = 0, onHide }) {
       if (maps?.maps?.[0]) paintField(simARef.current, maps.maps[0].grid, maps.size)
       if (maps?.maps?.[1]) paintField(simBRef.current, maps.maps[1].grid, maps.size)
     }
-  }, [eventResult, fingerprint, layer, params, sim])
+  }, [eventResult, fingerprint, layer, params, planet, sim])
 
-  const title = eventOn
-    ? EVENT_NOTE[params.simEvent] ?? 'Simulation maps'
-    : sim
-      ? equation.note
-      : NOISE_EQUATION
+  const title = planet
+    ? 'lon × lat · the planet unrolled'
+    : eventOn
+      ? EVENT_NOTE[params.simEvent] ?? 'Simulation maps'
+      : sim
+        ? equation.note
+        : NOISE_EQUATION
 
   return (
     <aside className="noise-panel panel-frame" aria-label="2D noise field">
       <div className="panel-head">
-        <h2>{eventOn ? 'Sim map' : '2D noise'}</h2>
+        <h2>{planet ? '2D map' : eventOn ? 'Sim map' : '2D noise'}</h2>
         {onHide ? (
           <button type="button" className="panel-hide" onClick={onHide}>
             Hide
@@ -191,14 +258,17 @@ export default function NoiseMap2D({ params, selected = 0, onHide }) {
       ) : null}
       <canvas
         ref={canvasRef}
-        className="noise-map"
+        className={planet ? 'noise-map is-wide' : 'noise-map'}
         width={MAP_PX}
-        height={MAP_PX}
-        aria-label="Height field of stacked noise layers"
+        height={planet ? MAP_PX / 2 : MAP_PX}
+        aria-label={planet ? 'Equirectangular map of the planet' : 'Height field of stacked noise layers'}
       />
       <p className="panel-note">
-        {eventOn || sim ? 'maps → terrace · ' : ''}
-        xz plane
+        {planet
+          ? params.planetMapping === 'equirect'
+            ? 'Equirectangular · this is the xz plane, so the top and bottom rows each squeeze into one pole'
+            : 'Equirectangular · the top and bottom rows are stretched, the ball is not'
+          : `${eventOn || sim ? 'maps → terrace · ' : ''}xz plane`}
       </p>
     </aside>
   )

@@ -494,17 +494,15 @@ function blendLayer(prev, next, blend, mix) {
   return prev + next * amount
 }
 
-/** Stacked height used by the 2D map and the 3D grid. */
-export function sampleHeight(x, z, params) {
-  const layers = getLayers(params)
+function stackLayers(params, sampleLayer) {
   let height = 0
   let started = false
 
-  for (const layer of layers) {
+  for (const layer of getLayers(params)) {
     if (layer.enabled === false) continue
     const mix = layer.mix ?? 1
     if (mix <= 0) continue
-    const value = sampleLayerNormalized(x, z, layer) * (layer.amplitude ?? 0)
+    const value = sampleLayer(layer) * (layer.amplitude ?? 0)
     if (!started) {
       height = value * mix
       started = true
@@ -514,6 +512,195 @@ export function sampleHeight(x, z, params) {
   }
 
   return height
+}
+
+/** Stacked height used by the 2D map and the 3D grid. */
+export function sampleHeight(x, z, params) {
+  return stackLayers(params, (layer) => sampleLayerNormalized(x, z, layer))
+}
+
+function grad3(hash, x, y, z) {
+  const h = hash & 15
+  const u = h < 8 ? x : y
+  const v = h < 4 ? y : h === 12 || h === 14 ? x : z
+  return (h & 1 ? -u : u) + (h & 2 ? -v : v)
+}
+
+/** Gradient noise in 3D, roughly [-1, 1]. */
+export function perlin3(x, y, z) {
+  const xi = Math.floor(x)
+  const yi = Math.floor(y)
+  const zi = Math.floor(z)
+  const X = xi & 255
+  const Y = yi & 255
+  const Z = zi & 255
+  const xf = x - xi
+  const yf = y - yi
+  const zf = z - zi
+  const u = fade(xf)
+  const v = fade(yf)
+  const w = fade(zf)
+
+  const A = P[X] + Y
+  const AA = P[A] + Z
+  const AB = P[A + 1] + Z
+  const B = P[X + 1] + Y
+  const BA = P[B] + Z
+  const BB = P[B + 1] + Z
+
+  return lerp(
+    lerp(
+      lerp(grad3(P[AA], xf, yf, zf), grad3(P[BA], xf - 1, yf, zf), u),
+      lerp(grad3(P[AB], xf, yf - 1, zf), grad3(P[BB], xf - 1, yf - 1, zf), u),
+      v,
+    ),
+    lerp(
+      lerp(grad3(P[AA + 1], xf, yf, zf - 1), grad3(P[BA + 1], xf - 1, yf, zf - 1), u),
+      lerp(grad3(P[AB + 1], xf, yf - 1, zf - 1), grad3(P[BB + 1], xf - 1, yf - 1, zf - 1), u),
+      v,
+    ),
+    w,
+  )
+}
+
+function hash01_3(ix, iy, iz) {
+  return P[(P[(P[ix & 255] + iy) & 255] + iz) & 255] / 255
+}
+
+function value3(x, y, z) {
+  const xi = Math.floor(x)
+  const yi = Math.floor(y)
+  const zi = Math.floor(z)
+  const xf = fade(x - xi)
+  const yf = fade(y - yi)
+  const zf = fade(z - zi)
+  const at = (dx, dy, dz) => hash01_3(xi + dx, yi + dy, zi + dz) * 2 - 1
+  return lerp(
+    lerp(lerp(at(0, 0, 0), at(1, 0, 0), xf), lerp(at(0, 1, 0), at(1, 1, 0), xf), yf),
+    lerp(lerp(at(0, 0, 1), at(1, 0, 1), xf), lerp(at(0, 1, 1), at(1, 1, 1), xf), yf),
+    zf,
+  )
+}
+
+const F3 = 1 / 3
+const G3 = 1 / 6
+
+function simplex3(xin, yin, zin) {
+  const s = (xin + yin + zin) * F3
+  const i = Math.floor(xin + s)
+  const j = Math.floor(yin + s)
+  const k = Math.floor(zin + s)
+  const t = (i + j + k) * G3
+  const x0 = xin - (i - t)
+  const y0 = yin - (j - t)
+  const z0 = zin - (k - t)
+
+  let i1, j1, k1, i2, j2, k2
+  if (x0 >= y0) {
+    if (y0 >= z0) [i1, j1, k1, i2, j2, k2] = [1, 0, 0, 1, 1, 0]
+    else if (x0 >= z0) [i1, j1, k1, i2, j2, k2] = [1, 0, 0, 1, 0, 1]
+    else [i1, j1, k1, i2, j2, k2] = [0, 0, 1, 1, 0, 1]
+  } else if (y0 < z0) [i1, j1, k1, i2, j2, k2] = [0, 0, 1, 0, 1, 1]
+  else if (x0 < z0) [i1, j1, k1, i2, j2, k2] = [0, 1, 0, 0, 1, 1]
+  else [i1, j1, k1, i2, j2, k2] = [0, 1, 0, 1, 1, 0]
+
+  const corner = (di, dj, dk, x, y, z) => {
+    const tC = 0.6 - x * x - y * y - z * z
+    if (tC < 0) return 0
+    const hash = P[(P[(P[(i + di) & 255] + j + dj) & 255] + k + dk) & 255]
+    const tt = tC * tC
+    return tt * tt * grad3(hash, x, y, z)
+  }
+
+  const n0 = corner(0, 0, 0, x0, y0, z0)
+  const n1 = corner(i1, j1, k1, x0 - i1 + G3, y0 - j1 + G3, z0 - k1 + G3)
+  const n2 = corner(i2, j2, k2, x0 - i2 + 2 * G3, y0 - j2 + 2 * G3, z0 - k2 + 2 * G3)
+  const n3 = corner(1, 1, 1, x0 - 1 + 3 * G3, y0 - 1 + 3 * G3, z0 - 1 + 3 * G3)
+  return clamp(32 * (n0 + n1 + n2 + n3), -1, 1)
+}
+
+function worley3(x, y, z) {
+  const xi = Math.floor(x)
+  const yi = Math.floor(y)
+  const zi = Math.floor(z)
+  let minD = 8
+  for (let oz = -1; oz <= 1; oz++) {
+    for (let oy = -1; oy <= 1; oy++) {
+      for (let ox = -1; ox <= 1; ox++) {
+        const cx = xi + ox
+        const cy = yi + oy
+        const cz = zi + oz
+        const dx = x - (cx + hash01_3(cx, cy, cz))
+        const dy = y - (cy + hash01_3(cx + 37, cy + 91, cz + 11))
+        const dz = z - (cz + hash01_3(cx + 73, cy + 17, cz + 53))
+        minD = Math.min(minD, dx * dx + dy * dy + dz * dz)
+      }
+    }
+  }
+  return clamp(1 - 2 * Math.sqrt(minD), -1, 1)
+}
+
+function fbm3(x, y, z, layer, kernel, mapSample = (value) => value) {
+  const octaves = Math.max(1, Math.round(layer.octaves ?? 1))
+  const persistence = layer.persistence ?? 0.5
+  const lacunarity = layer.lacunarity ?? 2
+  let sum = 0
+  let amp = 1
+  let freq = layer.frequency
+  let norm = 0
+
+  for (let i = 0; i < octaves; i++) {
+    sum += mapSample(kernel(x * freq, y * freq, z * freq)) * amp
+    norm += amp
+    amp *= persistence
+    freq *= lacunarity
+  }
+
+  return sum / (norm || 1)
+}
+
+/** One layer read straight from 3D space. Returns null for simulated equations, which only exist on the flat grid. */
+export function sampleLayerNormalized3(x, y, z, layer) {
+  const equation = layer.equation || 'perlin-fbm'
+  if (isSimulatedEquation(equation)) return null
+  const px = x + (layer.offsetX ?? 0)
+  const py = y
+  const pz = z + (layer.offsetZ ?? 0)
+  let raw = 0
+
+  if (equation === 'value-fbm') {
+    raw = fbm3(px, py, pz, layer, value3)
+  } else if (equation === 'simplex-fbm') {
+    raw = fbm3(px, py, pz, layer, simplex3)
+  } else if (equation === 'worley') {
+    raw = fbm3(px, py, pz, layer, worley3)
+  } else if (equation === 'turbulence') {
+    raw = fbm3(px, py, pz, layer, perlin3, (value) => Math.abs(value) * 2 - 1)
+  } else if (equation === 'ridged-fbm') {
+    raw = fbm3(px, py, pz, layer, perlin3, (value) => {
+      const ridge = 1 - Math.abs(value)
+      return ridge * ridge * 2 - 1
+    })
+  } else if (equation === 'domain-warp') {
+    const freq = layer.frequency
+    const warp = 4.5
+    const qx = px + perlin3(px * freq, py * freq, pz * freq) * warp
+    const qy = py + perlin3(px * freq + 7.3, py * freq + 31.7, pz * freq + 2.9) * warp
+    const qz = pz + perlin3(px * freq + 19.1, py * freq + 5.4, pz * freq + 13.2) * warp
+    raw = fbm3(qx, qy, qz, layer, perlin3)
+  } else {
+    raw = fbm3(px, py, pz, layer, perlin3)
+  }
+
+  return shapeValue(raw, layer)
+}
+
+/**
+ * Stacked height at a point in 3D space. `flatLayer(layer)` supplies layers that
+ * have no 3D form (the simulated equations).
+ */
+export function sampleHeight3(x, y, z, params, flatLayer) {
+  return stackLayers(params, (layer) => sampleLayerNormalized3(x, y, z, layer) ?? flatLayer(layer))
 }
 
 /** Stacked field mapped back to roughly [-1, 1]. */

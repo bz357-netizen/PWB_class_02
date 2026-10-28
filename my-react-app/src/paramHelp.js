@@ -125,6 +125,57 @@ export const PARAM_HELP = {
     'How many steps each mote remembers. Short trails keep the ground clear. Longer trails show where the wind, the fish, and the bear have been.',
   fieldResolution:
     'How fine the flow grid is. Higher resolution follows the valleys and the whirlpools more closely. It does not change the terrain mesh.',
+  breakWind:
+    'Steady push on the tree. Low wind only leans the crown. High wind bends the limbs until a joint snaps. Gust is a short burst on top of this.',
+  breakMasonry:
+    'How much tension, shear, and bending the columns and floor joints can take. Low values let a quake open the frame. High values keep the tower standing.',
+  breakWood:
+    'How much bending the trunk and branches can take. A gust snaps one joint and the limb above it falls in one piece.',
+  breakGravity:
+    'Pull on every loose piece. It also sets how much weight each joint has to carry. Higher gravity makes spans fail sooner.',
+  planetRelief:
+    'How far the noise height pushes the ground out from the center. 0 is a smooth ball. Higher values raise taller mountains and dig deeper basins. Amplitude A on each layer still sets which layer wins.',
+  planetSpin: 'How fast the planet turns under the sun. 0 holds it still.',
+  planetTowns:
+    'How many towns to place on land. Roads link every town to its neighbors and add a few loops. Roads never cross water, so islands stay separate.',
+  planetRoadWidth: 'Width of the asphalt in world units. The paved curb adds a little on each side.',
+  planetHouses:
+    'How tightly houses cluster around each town and line the roads. Their walls block the robot. 0 removes them.',
+  planetLamps: 'Street lamp spacing. They alternate sides of the road. 0 removes them.',
+  planetTrees: 'How many trees grow on land away from the roads and houses.',
+  planetCars: 'How many cars drive the roads. At each town they pick a new road at random.',
+  planetAgentSize:
+    'Height of the robot in world units. Default 0.5 is about 5% of the planet radius, so houses and trees stand taller than the person, as on Messenger.',
+  planetAgentSpeed:
+    'Walking pace in world units per second. Run multiplies it. House walls block the capsule; water is entered by standing on the seabed, so the robot wades instead of floating.',
+  planetDetail:
+    'Mesh resolution. On UV rings it is the segment count around the planet and from pole to pole. On Cube it is the cell count along each face. Higher detail shows finer coastlines and ridges but takes longer to rebuild.',
+  planetStop:
+    'Where this color sits on the elevation scale. 0 is the lowest point on the planet, 1 is the highest. Gradient blends between neighbors. Stepped holds each color until the next stop.',
+  planetSeaLevel:
+    'The water is a sphere of radius base + sea level, in world units. Below 0 sinks it under the base sphere so more land shows: archipelagos and peaks. Above 0 floods the world into scattered islands. 0 sits at the planet’s average surface. If you raise Relief a lot, lower this to keep coastlines.',
+  planetOceanRes:
+    'Width and height segments of the water sphere, 8 to 512. The water is smooth, so it rarely needs to match the ground. Raise it only if a large wave Height shows facets or the coastline looks polygonal.',
+  planetClarity:
+    'How see-through the open water is. 0 is nearly opaque. Higher values let the sea floor show. Foam and ripples always stay solid.',
+  planetDeep: 'Open water, far from land.',
+  planetShallow:
+    'The band approaching the coast, four times the coastline Depth wide. Close to Deep gives a uniform sea. Strong contrast gives a tropical lagoon.',
+  planetFoam:
+    'The bright line at the waterline, and the color of the ripple rings. A near-white tint reads best.',
+  planetWaveSpeed:
+    'How fast the water moves. It also scrolls the ripple rings, so 0 freezes both.',
+  planetWaveScale: 'How many swells cross the sphere. Higher values make more, tighter waves.',
+  planetWaveHeight:
+    'How far the surface bobs in and out, in world units. Keep it small so the water shimmers instead of churning. Large values need a higher Resolution.',
+  planetFoamDepth:
+    'How deep the water can be and still count as near the coast. It sets the foam line width and, four times over, the shallow band. Raising it pushes the whole shallow zone out to sea.',
+  planetFoamSoft:
+    'The foam line’s edge. 0 is a crisp rim. 1 is a wide, hazy fade. To widen only the shallow tint without a thick rim, raise Depth and drop Softness.',
+  planetRippleWidth:
+    'Spacing and thickness of each ring. Small values pack many thin rings near the shore. Large values give a few bold bands.',
+  planetRippleDistance:
+    'How far from the shore the rings reach before they fade. It is separate from coastline Depth, so a thin foam rim can pair with rings that travel far out.',
 }
 
 export function getParamHelp(label, key) {

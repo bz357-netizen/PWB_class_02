@@ -2,7 +2,6 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import NoiseMap2D from './NoiseMap2D.jsx'
 import DensitySlice from './DensitySlice.jsx'
 import AccountMenu from './AccountMenu.jsx'
-import HandPanel from './HandPanel.jsx'
 import SignInScreen from './SignInScreen.jsx'
 import { useAuth } from './useAuth.js'
 import {
@@ -31,22 +30,40 @@ import {
 import { MESH_MODES, getMeshMode } from './meshing.js'
 import { SHADER_STRATEGIES, getShaderStrategy } from './shaders.js'
 import { SCATTER_LAYERS, createScatterParams, describeScatter } from './scatter.js'
+import { BREAK_BUILDINGS } from './deconstruct.js'
+import {
+  MAX_COLOR_STOPS,
+  OCEAN_RESOLUTIONS,
+  PLANET_DETAILS,
+  PLANET_MAPPINGS,
+  PLANET_MESHES,
+  createColorStops,
+  createOceanParams,
+  rampCss,
+} from './planet.js'
+import {
+  AGENT_EMOTES,
+  AGENT_EXPRESSIONS,
+  AGENT_MODES,
+  FOLLOW_MODES,
+  createAgentParams,
+} from './planetAgent.js'
+import { MAX_CARS, createTownParams } from './planetTown.js'
 import './App.css'
 
 const GalaxyCanvas = lazy(() => import('./GalaxyCanvas.jsx'))
 const VoxelCanvas = lazy(() => import('./VoxelCanvas.jsx'))
 const CsgCanvas = lazy(() => import('./CsgCanvas.jsx'))
 const ShaderCanvas = lazy(() => import('./ShaderCanvas.jsx'))
+const DeconstructCanvas = lazy(() => import('./DeconstructCanvas.jsx'))
+const PlanetCanvas = lazy(() => import('./PlanetCanvas.jsx'))
 
 const PLANE_RESOLUTIONS = [95, 300, 500, 1000]
 const VOXEL_RESOLUTIONS = [24, 32, 48, 64]
 const CSG_RESOLUTIONS = [16, 24, 32, 40]
 
-function viewFromHash(hash) {
-  if (hash === '#voxel') return 'voxel'
-  if (hash === '#csg') return 'csg'
-  if (hash === '#shaders') return 'shaders'
-  return 'field'
+function viewFromHash() {
+  return 'planet'
 }
 
 function shaderFromSearch() {
@@ -80,6 +97,23 @@ const initialParams = {
   simTime: 0,
   climate: 'temperate',
   country: 'japan',
+  breakWind: 0.22,
+  breakMasonry: 0.62,
+  breakWood: 0.48,
+  breakGravity: 1,
+  breakBuilding: 'residential',
+  breakEpoch: 0,
+  breakPulse: null,
+  planetMapping: 'noise3d',
+  planetMesh: 'uv',
+  planetDetail: 64,
+  planetRelief: 0.55,
+  ...createOceanParams(),
+  ...createAgentParams(),
+  ...createTownParams(),
+  planetSpin: 0.2,
+  planetStepped: true,
+  planetStops: createColorStops(),
   layers: [
     createNoiseLayer({
       name: 'Base',
@@ -263,6 +297,619 @@ function formatClock(value) {
   return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`
 }
 
+function BreakControls({ params, stats, onChange, onPulse, onReset }) {
+  const building = params.breakBuilding || 'residential'
+  return (
+    <PanelSection
+      title="Structure"
+      note="Joints carry the floor loads down the columns. A gust used to open several limbs at once while the wind was still pushing, so the crown flew apart. Now one joint hinges and that limb falls together. Click a column to drop the floors on it."
+    >
+      <div className="layer-actions">
+        {BREAK_BUILDINGS.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={building === item.id ? 'is-on' : undefined}
+            onClick={() => onChange('breakBuilding')(item.id)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+      <Slider
+        label="Wind"
+        min={0}
+        max={1}
+        step={0.01}
+        value={params.breakWind ?? 0.22}
+        onChange={onChange('breakWind')}
+        helpKey="breakWind"
+      />
+      <Slider
+        label="Masonry"
+        min={0}
+        max={1}
+        step={0.01}
+        value={params.breakMasonry ?? 0.62}
+        onChange={onChange('breakMasonry')}
+        helpKey="breakMasonry"
+      />
+      <Slider
+        label="Wood"
+        min={0}
+        max={1}
+        step={0.01}
+        value={params.breakWood ?? 0.48}
+        onChange={onChange('breakWood')}
+        helpKey="breakWood"
+      />
+      <Slider
+        label="Gravity"
+        min={0.2}
+        max={2}
+        step={0.05}
+        value={params.breakGravity ?? 1}
+        onChange={onChange('breakGravity')}
+        helpKey="breakGravity"
+      />
+      <div className="layer-actions">
+        <button type="button" onClick={() => onPulse('gust')}>
+          Gust
+        </button>
+        <button type="button" onClick={() => onPulse('quake')}>
+          Quake
+        </button>
+        <button type="button" onClick={onReset}>
+          Reset
+        </button>
+      </div>
+      {stats ? (
+        <p className="panel-note">
+          {stats.intact} joints holding · {stats.broken} broken
+          {stats.moving ? ` · ${stats.moving} moving` : ''}
+        </p>
+      ) : (
+        <p className="panel-note">Click a column or a limb.</p>
+      )}
+    </PanelSection>
+  )
+}
+
+function OnOff({ value, onChange, on = 'On', off = 'Off' }) {
+  return (
+    <div className="btn-row">
+      <button type="button" className={value ? 'is-on' : ''} onClick={() => onChange(true)}>
+        {on}
+      </button>
+      <button type="button" className={!value ? 'is-on' : ''} onClick={() => onChange(false)}>
+        {off}
+      </button>
+    </div>
+  )
+}
+
+function ColorRow({ label, helpKey, value, onChange }) {
+  return (
+    <label className="color-row">
+      <ParamTooltip label={label} help={getParamHelp(label, helpKey)} />
+      <input type="color" value={value} onChange={(event) => onChange(event.target.value)} />
+    </label>
+  )
+}
+
+function PlanetControls({ params, stats, onChange }) {
+  const stops = params.planetStops ?? []
+  const mapping =
+    PLANET_MAPPINGS.find((item) => item.id === params.planetMapping) ?? PLANET_MAPPINGS[0]
+  const mesh = PLANET_MESHES.find((item) => item.id === params.planetMesh) ?? PLANET_MESHES[0]
+  const seaT = stats?.seaT
+  const oceanOn = params.planetOcean !== false
+  const foamOn = params.planetFoamOn !== false
+  const ripplesOn = params.planetRipplesOn !== false
+
+  const setStop = (index, key) => (value) => {
+    onChange('planetStops')(
+      stops.map((stop, i) => (i === index ? { ...stop, [key]: value } : stop)),
+    )
+  }
+
+  const addStop = () => {
+    if (stops.length >= MAX_COLOR_STOPS) return
+    const sorted = [...stops].sort((a, b) => a.at - b.at)
+    let gapAt = 0.5
+    let gapColor = sorted[0]?.color ?? '#808080'
+    let widest = -1
+    for (let i = 1; i < sorted.length; i++) {
+      const gap = sorted[i].at - sorted[i - 1].at
+      if (gap > widest) {
+        widest = gap
+        gapAt = (sorted[i].at + sorted[i - 1].at) / 2
+        gapColor = sorted[i - 1].color
+      }
+    }
+    onChange('planetStops')([...stops, { at: Number(gapAt.toFixed(2)), color: gapColor }])
+  }
+
+  const removeStop = (index) => {
+    if (stops.length <= 2) return
+    onChange('planetStops')(stops.filter((_, i) => i !== index))
+  }
+
+  return (
+    <>
+      <PanelSection
+        title="Planet"
+        note="The noise layers below shape this ball. Each point is pushed out from the center by the noise height there."
+      >
+        <p className="panel-note">Mapping</p>
+        <div className="btn-row">
+          {PLANET_MAPPINGS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={mapping.id === item.id ? 'is-on' : ''}
+              onClick={() => onChange('planetMapping')(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        <p className="panel-note">{mapping.note}</p>
+        <p className="panel-note">Sphere mesh</p>
+        <div className="btn-row">
+          {PLANET_MESHES.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={mesh.id === item.id ? 'is-on' : ''}
+              onClick={() => onChange('planetMesh')(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        <p className="panel-note">{mesh.note} Switch to Lines to see the cells.</p>
+        <Slider
+          label="Relief"
+          min={0}
+          max={1.5}
+          step={0.01}
+          value={params.planetRelief ?? 0.55}
+          onChange={onChange('planetRelief')}
+          helpKey="planetRelief"
+        />
+        <Slider
+          label="Spin"
+          min={0}
+          max={1}
+          step={0.01}
+          value={params.planetSpin ?? 0.2}
+          onChange={onChange('planetSpin')}
+          format={(value) => `${Math.round(value * 100)}%`}
+          helpKey="planetSpin"
+        />
+        <Slider
+          label="Detail"
+          min={32}
+          max={192}
+          step={1}
+          value={params.planetDetail ?? 64}
+          onChange={onChange('planetDetail')}
+          format={(value) => String(Math.round(value))}
+          helpKey="planetDetail"
+        />
+        <div className="btn-row btn-row-4">
+          {PLANET_DETAILS.map((cells) => (
+            <button
+              key={cells}
+              type="button"
+              className={Math.round(params.planetDetail ?? 64) === cells ? 'is-on' : ''}
+              onClick={() => onChange('planetDetail')(cells)}
+            >
+              {cells}
+            </button>
+          ))}
+        </div>
+        <p className="panel-note">Surface display</p>
+        <div className="layer-actions">
+          <button
+            type="button"
+            className={!params.showMesh ? 'is-on' : ''}
+            onClick={() => onChange('showMesh')(false)}
+          >
+            Lines
+          </button>
+          <button
+            type="button"
+            className={params.showMesh ? 'is-on' : ''}
+            onClick={() => onChange('showMesh')(true)}
+          >
+            Solid
+          </button>
+        </div>
+        {stats ? (
+          <p className="panel-note">
+            {stats.vertices.toLocaleString()} vertices · {stats.triangles.toLocaleString()} tris ·{' '}
+            {stats.ms} ms
+          </p>
+        ) : null}
+      </PanelSection>
+
+      <PanelSection
+        title="Color stops"
+        note="Elevation runs from this planet’s lowest point (0) to its highest (1). Each stop paints one height. The line marks the sea."
+      >
+        <div className="ramp-preview" style={{ background: rampCss(stops, params.planetStepped) }}>
+          {oceanOn && seaT != null && seaT >= 0 && seaT <= 1 ? (
+            <span className="ramp-sea" style={{ left: `${seaT * 100}%` }} />
+          ) : null}
+        </div>
+        <div className="btn-row">
+          <button
+            type="button"
+            className={!params.planetStepped ? 'is-on' : ''}
+            onClick={() => onChange('planetStepped')(false)}
+          >
+            Gradient
+          </button>
+          <button
+            type="button"
+            className={params.planetStepped ? 'is-on' : ''}
+            onClick={() => onChange('planetStepped')(true)}
+          >
+            Stepped
+          </button>
+        </div>
+        {stops.map((stop, index) => (
+          <div className="stop-row" key={index}>
+            <input
+              type="color"
+              value={stop.color}
+              aria-label={`Stop ${index + 1} color`}
+              onChange={(event) => setStop(index, 'color')(event.target.value)}
+            />
+            <Slider
+              label={`Stop ${index + 1}`}
+              min={0}
+              max={1}
+              step={0.01}
+              value={stop.at}
+              onChange={setStop(index, 'at')}
+              helpKey="planetStop"
+            />
+            <button
+              type="button"
+              className="stop-remove"
+              aria-label={`Remove stop ${index + 1}`}
+              disabled={stops.length <= 2}
+              onClick={() => removeStop(index)}
+            >
+              ×
+            </button>
+          </div>
+        ))}
+        <div className="layer-actions">
+          <button type="button" onClick={addStop} disabled={stops.length >= MAX_COLOR_STOPS}>
+            Add stop
+          </button>
+          <button type="button" onClick={() => onChange('planetStops')(createColorStops())}>
+            Reset
+          </button>
+        </div>
+      </PanelSection>
+
+      <PanelSection
+        title="Ocean"
+        note="A water sphere at the base radius plus the sea level. The ground is pushed in and out around that same radius."
+      >
+        <OnOff
+          value={oceanOn}
+          on="Water"
+          off="Dry"
+          onChange={onChange('planetOcean')}
+        />
+        <Slider
+          label="Sea level"
+          min={-3}
+          max={3}
+          step={0.01}
+          value={params.planetSeaLevel ?? 0}
+          onChange={onChange('planetSeaLevel')}
+          helpKey="planetSeaLevel"
+        />
+        <Slider
+          label="Resolution"
+          min={8}
+          max={512}
+          step={1}
+          value={params.planetOceanRes ?? 128}
+          onChange={onChange('planetOceanRes')}
+          format={(value) => String(Math.round(value))}
+          helpKey="planetOceanRes"
+        />
+        <div className="btn-row btn-row-4">
+          {OCEAN_RESOLUTIONS.map((res) => (
+            <button
+              key={res}
+              type="button"
+              className={Math.round(params.planetOceanRes ?? 128) === res ? 'is-on' : ''}
+              onClick={() => onChange('planetOceanRes')(res)}
+            >
+              {res}
+            </button>
+          ))}
+        </div>
+        <Slider
+          label="Clarity"
+          min={0}
+          max={1}
+          step={0.01}
+          value={params.planetClarity ?? 0.16}
+          onChange={onChange('planetClarity')}
+          format={(value) => `${Math.round(value * 100)}%`}
+          helpKey="planetClarity"
+        />
+        {stats?.land != null ? (
+          <p className="panel-note">
+            {oceanOn
+              ? `${Math.round(stats.land * 100)}% land · ${100 - Math.round(stats.land * 100)}% sea`
+              : 'No water'}
+          </p>
+        ) : null}
+      </PanelSection>
+
+      <PanelSection
+        title="Ocean colors"
+        note="Blended by how far the ground is behind the water. Foam is also the ripple color, so a near-white reads best."
+      >
+        <ColorRow label="Deep" helpKey="planetDeep" value={params.planetDeep} onChange={onChange('planetDeep')} />
+        <ColorRow
+          label="Shallow"
+          helpKey="planetShallow"
+          value={params.planetShallow}
+          onChange={onChange('planetShallow')}
+        />
+        <ColorRow label="Foam" helpKey="planetFoam" value={params.planetFoam} onChange={onChange('planetFoam')} />
+      </PanelSection>
+
+      <PanelSection title="Surface" note="A gentle radial bob of the water mesh." defaultOpen={false}>
+        <Slider
+          label="Speed"
+          min={0}
+          max={3}
+          step={0.01}
+          value={params.planetWaveSpeed ?? 1}
+          onChange={onChange('planetWaveSpeed')}
+          helpKey="planetWaveSpeed"
+        />
+        <Slider
+          label="Scale"
+          min={2}
+          max={80}
+          step={0.5}
+          value={params.planetWaveScale ?? 24}
+          onChange={onChange('planetWaveScale')}
+          format={(value) => value.toFixed(1)}
+          helpKey="planetWaveScale"
+        />
+        <Slider
+          label="Height"
+          min={0}
+          max={0.3}
+          step={0.001}
+          value={params.planetWaveHeight ?? 0.03}
+          onChange={onChange('planetWaveHeight')}
+          format={(value) => value.toFixed(3)}
+          helpKey="planetWaveHeight"
+        />
+      </PanelSection>
+
+      <PanelSection title="Coastline" note="Shallow tint and the foam line at the shore." defaultOpen={false}>
+        <OnOff value={foamOn} onChange={onChange('planetFoamOn')} />
+        <Slider
+          label="Depth"
+          min={0.01}
+          max={1}
+          step={0.005}
+          value={params.planetFoamDepth ?? 0.035}
+          onChange={onChange('planetFoamDepth')}
+          format={(value) => value.toFixed(3)}
+          helpKey="planetFoamDepth"
+        />
+        <Slider
+          label="Softness"
+          min={0}
+          max={1}
+          step={0.01}
+          value={params.planetFoamSoft ?? 0.35}
+          onChange={onChange('planetFoamSoft')}
+          helpKey="planetFoamSoft"
+        />
+      </PanelSection>
+
+      <PanelSection
+        title="Ripples"
+        note="Bright lines parallel to the shore that scroll in toward land. Surface speed drives them too."
+        defaultOpen={false}
+      >
+        <OnOff value={ripplesOn} onChange={onChange('planetRipplesOn')} />
+        <Slider
+          label="Width"
+          min={0.02}
+          max={0.6}
+          step={0.005}
+          value={params.planetRippleWidth ?? 0.05}
+          onChange={onChange('planetRippleWidth')}
+          format={(value) => value.toFixed(3)}
+          helpKey="planetRippleWidth"
+        />
+        <Slider
+          label="Distance"
+          min={0.05}
+          max={3}
+          step={0.01}
+          value={params.planetRippleDistance ?? 0.3}
+          onChange={onChange('planetRippleDistance')}
+          helpKey="planetRippleDistance"
+        />
+      </PanelSection>
+
+      <PanelSection
+        title="Agent"
+        note="The robot from the three.js skinning and morph example. House walls block it. Water is entered by standing on the seabed, so it wades instead of floating."
+      >
+        <OnOff
+          value={params.planetAgent !== false}
+          onChange={onChange('planetAgent')}
+          on="Show"
+          off="Hide"
+        />
+        <p className="panel-note">State</p>
+        <div className="btn-row">
+          {AGENT_MODES.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={(params.planetAgentMode ?? 'walk') === item.id ? 'is-on' : ''}
+              onClick={() => onChange('planetAgentMode')(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        <p className="panel-note">Emotes</p>
+        <div className="btn-row">
+          {AGENT_EMOTES.map((name) => (
+            <button
+              key={name}
+              type="button"
+              onClick={() => onChange('planetAgentEmote')({ name, id: Date.now() })}
+            >
+              {name === 'ThumbsUp' ? 'Thumbs up' : name}
+            </button>
+          ))}
+        </div>
+        <p className="panel-note">Camera follows</p>
+        <div className="btn-row">
+          {FOLLOW_MODES.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={(params.planetFollow ?? 'robot') === item.id ? 'is-on' : ''}
+              onClick={() => onChange('planetFollow')(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        <p className="panel-note">Wander on its own (random stops and emotes)</p>
+        <OnOff value={params.planetAgentAuto !== false} onChange={onChange('planetAgentAuto')} />
+        <Slider
+          label="Size"
+          min={0.2}
+          max={2}
+          step={0.05}
+          value={params.planetAgentSize ?? 0.5}
+          onChange={onChange('planetAgentSize')}
+          helpKey="planetAgentSize"
+        />
+        <Slider
+          label="Speed"
+          min={0.2}
+          max={3}
+          step={0.05}
+          value={params.planetAgentSpeed ?? 1}
+          onChange={onChange('planetAgentSpeed')}
+          helpKey="planetAgentSpeed"
+        />
+        <p className="panel-note">Expressions</p>
+        {AGENT_EXPRESSIONS.map((item) => (
+          <Slider
+            key={item.key}
+            label={item.label}
+            min={0}
+            max={1}
+            step={0.01}
+            value={params[item.key] ?? 0}
+            onChange={onChange(item.key)}
+          />
+        ))}
+      </PanelSection>
+
+      <PanelSection
+        title="Town"
+        note="Roads, houses, street lamps, trees and little cars, in the spirit of Messenger. Everything follows the terrain and stays on land."
+      >
+        <OnOff value={params.planetRoads !== false} onChange={onChange('planetRoads')} />
+        <Slider
+          label="Towns"
+          min={2}
+          max={16}
+          step={1}
+          value={params.planetTowns ?? 9}
+          onChange={onChange('planetTowns')}
+          format={(value) => String(Math.round(value))}
+          helpKey="planetTowns"
+        />
+        <Slider
+          label="Road width"
+          min={0.2}
+          max={1}
+          step={0.05}
+          value={params.planetRoadWidth ?? 0.4}
+          onChange={onChange('planetRoadWidth')}
+          helpKey="planetRoadWidth"
+        />
+        <Slider
+          label="Houses"
+          min={0}
+          max={1}
+          step={0.05}
+          value={params.planetHouses ?? 0.6}
+          onChange={onChange('planetHouses')}
+          helpKey="planetHouses"
+        />
+        <Slider
+          label="Lamps"
+          min={0}
+          max={1}
+          step={0.05}
+          value={params.planetLamps ?? 0.6}
+          onChange={onChange('planetLamps')}
+          helpKey="planetLamps"
+        />
+        <Slider
+          label="Trees"
+          min={0}
+          max={1}
+          step={0.05}
+          value={params.planetTrees ?? 0.5}
+          onChange={onChange('planetTrees')}
+          helpKey="planetTrees"
+        />
+        <Slider
+          label="Cars"
+          min={0}
+          max={MAX_CARS}
+          step={1}
+          value={params.planetCars ?? 5}
+          onChange={onChange('planetCars')}
+          format={(value) => String(Math.round(value))}
+          helpKey="planetCars"
+        />
+        <div className="btn-row">
+          <button
+            type="button"
+            onClick={() => onChange('planetTownSeed')(((params.planetTownSeed ?? 1) % 9999) + 1)}
+          >
+            Reroll town
+          </button>
+        </div>
+      </PanelSection>
+    </>
+  )
+}
+
 function World({ user, onLeaveGuest }) {
   const paramsRef = useRef({
     ...initialParams,
@@ -276,10 +923,12 @@ function World({ user, onLeaveGuest }) {
   const [selected, setSelected] = useState(0)
   const [volumeStats, setVolumeStats] = useState(null)
   const [scatterStats, setScatterStats] = useState(null)
+  const [breakStats, setBreakStats] = useState(null)
+  const [planetStats, setPlanetStats] = useState(null)
   const [view, setView] = useState(() =>
     typeof window !== 'undefined' ? viewFromHash(window.location.hash) : 'field',
   )
-  const [panels, setPanels] = useState({ hand: false, controls: false, noise: false })
+  const [panels, setPanels] = useState({ controls: false, noise: false })
   const togglePanel = (key) => setPanels((current) => ({ ...current, [key]: !current[key] }))
 
   useEffect(() => {
@@ -288,11 +937,9 @@ function World({ user, onLeaveGuest }) {
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
 
-  const openView = (next) => {
-    setView(next)
-    const hash = next === 'field' ? '#field' : `#${next}`
-    if (window.location.hash !== hash) window.location.hash = hash
-  }
+  useEffect(() => {
+    if (view === 'break') setPanels((current) => ({ ...current, controls: true }))
+  }, [view])
 
   useEffect(() => {
     if (!params.simPlaying || params.simEvent === 'none') return undefined
@@ -334,6 +981,17 @@ function World({ user, onLeaveGuest }) {
         ...params.scatter,
         [id]: { ...current, [key]: value },
       },
+    })
+  }
+
+  const resetBreak = () => {
+    commit({ ...params, breakEpoch: (params.breakEpoch ?? 0) + 1 })
+  }
+
+  const pulseBreakAction = (action) => {
+    commit({
+      ...params,
+      breakPulse: { action, id: (params.breakPulse?.id ?? 0) + 1 },
     })
   }
 
@@ -423,7 +1081,11 @@ function World({ user, onLeaveGuest }) {
   }))
   const shader = getShaderStrategy(params.shaderStrategy)
   const title =
-    view === 'voxel'
+    view === 'planet'
+      ? 'Planet'
+      : view === 'break'
+      ? 'Deconstruction'
+      : view === 'voxel'
       ? 'Voxel terrain'
       : view === 'csg'
         ? 'Density CSG'
@@ -431,7 +1093,11 @@ function World({ user, onLeaveGuest }) {
           ? 'Shader studies'
           : 'Noise field'
   const hint =
-    view === 'voxel'
+    view === 'planet'
+      ? 'Drag to turn the planet · The noise layers become height on the ball'
+      : view === 'break'
+      ? 'Click a column or a limb · Gust and quake load the joints until they snap'
+      : view === 'voxel'
       ? 'Drag to orbit · Cubes stack to the noise height'
       : view === 'csg'
         ? 'Drag to orbit · Each solid combines with the shape so far'
@@ -442,7 +1108,11 @@ function World({ user, onLeaveGuest }) {
   return (
     <div className="app">
       <Suspense fallback={<p className="scene-loading">Loading the terrain…</p>}>
-        {view === 'csg' ? (
+        {view === 'planet' ? (
+          <PlanetCanvas paramsRef={paramsRef} onStats={setPlanetStats} />
+        ) : view === 'break' ? (
+          <DeconstructCanvas paramsRef={paramsRef} onStats={setBreakStats} />
+        ) : view === 'csg' ? (
           <CsgCanvas paramsRef={paramsRef} onStats={setVolumeStats} />
         ) : view === 'voxel' ? (
           <VoxelCanvas paramsRef={paramsRef} />
@@ -461,36 +1131,6 @@ function World({ user, onLeaveGuest }) {
               <span className="tick is-live" aria-hidden="true" />
               PWB Class
             </p>
-            <nav className="view-tabs" aria-label="Scene">
-            <button
-              type="button"
-              className={view === 'field' ? 'is-on' : ''}
-              onClick={() => openView('field')}
-            >
-              Field
-            </button>
-            <button
-              type="button"
-              className={view === 'voxel' ? 'is-on' : ''}
-              onClick={() => openView('voxel')}
-            >
-              Voxel
-            </button>
-            <button
-              type="button"
-              className={view === 'csg' ? 'is-on' : ''}
-              onClick={() => openView('csg')}
-            >
-              CSG
-            </button>
-            <button
-              type="button"
-              className={view === 'shaders' ? 'is-on' : ''}
-              onClick={() => openView('shaders')}
-            >
-              Shaders
-            </button>
-          </nav>
           </div>
           <h1>{title}</h1>
           <p className="hint">{hint}</p>
@@ -502,9 +1142,13 @@ function World({ user, onLeaveGuest }) {
               WX <b>{weatherLabel}</b>
             </span>
             <span>
-              {view === 'csg' ? 'SOL' : view === 'shaders' ? 'SHD' : 'LYR'}{' '}
+              {view === 'break' ? 'JNT' : view === 'csg' ? 'SOL' : view === 'shaders' ? 'SHD' : 'LYR'}{' '}
               <b>
-                {view === 'csg'
+                {view === 'break'
+                  ? breakStats
+                    ? `${breakStats.intact}/${breakStats.broken}`
+                    : '…'
+                  : view === 'csg'
                   ? solids.length
                   : view === 'shaders'
                     ? shader.label
@@ -518,7 +1162,9 @@ function World({ user, onLeaveGuest }) {
                   ? Math.round(params.csgCells)
                   : view === 'voxel'
                     ? Math.round(params.voxelCells)
-                    : Math.round(params.resolution)}
+                    : view === 'planet'
+                      ? Math.round(params.planetDetail ?? 64)
+                      : Math.round(params.resolution)}
               </b>
             </span>
           </p>
@@ -535,7 +1181,7 @@ function World({ user, onLeaveGuest }) {
         />
         </div>
 
-        {panels.noise ? (
+        {view !== 'break' && panels.noise ? (
           view === 'csg' ? (
             <DensitySlice
               params={params}
@@ -543,29 +1189,18 @@ function World({ user, onLeaveGuest }) {
               onHide={() => togglePanel('noise')}
             />
           ) : (
-            <NoiseMap2D params={params} selected={selected} onHide={() => togglePanel('noise')} />
+            <NoiseMap2D
+              params={params}
+              selected={selected}
+              planet={view === 'planet'}
+              onHide={() => togglePanel('noise')}
+            />
           )
-        ) : (
+        ) : view !== 'break' ? (
           <button type="button" className="dock-tab is-noise" onClick={() => togglePanel('noise')}>
-            {view === 'csg' ? 'Density' : '2D Noise'}
+            {view === 'csg' ? 'Density' : view === 'planet' ? '2D Map' : '2D Noise'}
           </button>
-        )}
-
-        {panels.hand ? (
-          <HandPanel
-            sculptable={view === 'field' || view === 'shaders'}
-            flush={!panels.controls}
-            onHide={() => togglePanel('hand')}
-          />
-        ) : (
-          <button
-            type="button"
-            className={`dock-tab is-hand${panels.controls ? ' is-beside' : ''}`}
-            onClick={() => togglePanel('hand')}
-          >
-            Hand
-          </button>
-        )}
+        ) : null}
 
         {panels.controls ? (
         <aside className="side-panel panel-frame" aria-label="Scene controls">
@@ -575,7 +1210,19 @@ function World({ user, onLeaveGuest }) {
               Hide
             </button>
           </div>
+          <div className="panel-body">
           <p className="panel-note">Hover a label for help.</p>
+
+          {view === 'break' ? (
+            <BreakControls
+              params={params}
+              stats={breakStats}
+              onChange={bind}
+              onPulse={pulseBreakAction}
+              onReset={resetBreak}
+            />
+          ) : (
+          <>
 
           {view === 'field' ? (
             <ScatterControls
@@ -585,6 +1232,10 @@ function World({ user, onLeaveGuest }) {
               onWater={bind('shaderWater')}
               fieldNote
             />
+          ) : null}
+
+          {view === 'planet' ? (
+            <PlanetControls params={params} stats={planetStats} onChange={bind} />
           ) : null}
 
           {view === 'shaders' ? (
@@ -702,7 +1353,14 @@ function World({ user, onLeaveGuest }) {
           </>
           ) : null}
 
-          <PanelSection title="Daylight" note="Time and weather on the terrace">
+          <PanelSection
+            title="Daylight"
+            note={
+              view === 'planet'
+                ? 'The sun stays still while the planet turns. Time of day swings it around, so one side is always night.'
+                : 'Time and weather on the terrace'
+            }
+          >
           <Slider
             label="Time of day"
             min={0}
@@ -1199,7 +1857,7 @@ function World({ user, onLeaveGuest }) {
             </button>
           </div>
           </PanelSection>
-          ) : (
+          ) : view === 'planet' ? null : (
           <PanelSection title="Grid" note="Mesh density on the xz plane" defaultOpen={false}>
           <Slider
             label="Resolution"
@@ -1241,11 +1899,14 @@ function World({ user, onLeaveGuest }) {
           </div>
           </PanelSection>
           )}
+          </>
+          )}
+          </div>
         </aside>
         ) : (
           <button
             type="button"
-            className={`dock-tab is-controls${panels.hand ? ' is-beside' : ''}`}
+            className="dock-tab is-controls"
             onClick={() => togglePanel('controls')}
           >
             Controls

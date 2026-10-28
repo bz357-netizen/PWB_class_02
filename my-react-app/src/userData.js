@@ -7,7 +7,50 @@ import { CLIMATES, COUNTRIES } from './livingSim.js'
 import { MESH_MODES } from './meshing.js'
 import { SHADER_STRATEGIES } from './shaders.js'
 import { SCATTER_LAYERS } from './scatter.js'
+import { BREAK_BUILDINGS } from './deconstruct.js'
+import {
+  MAX_COLOR_STOPS,
+  PLANET_MAPPINGS,
+  PLANET_MESHES,
+  createColorStops,
+  createOceanParams,
+} from './planet.js'
+import { AGENT_MODES, FOLLOW_MODES, createAgentParams } from './planetAgent.js'
+import { MAX_CARS, createTownParams } from './planetTown.js'
 import { db } from './firebase.js'
+
+const AGENT_DEFAULTS = { ...createAgentParams(), ...createTownParams() }
+const AGENT_MODE_IDS = AGENT_MODES.map((item) => item.id)
+const FOLLOW_IDS = FOLLOW_MODES.map((item) => item.id)
+const AGENT_RANGES = {
+  planetAgentSize: [0.2, 2],
+  planetAgentSpeed: [0.2, 3],
+  planetAgentAngry: [0, 1],
+  planetAgentSurprised: [0, 1],
+  planetAgentSad: [0, 1],
+  planetTowns: [2, 16],
+  planetRoadWidth: [0.2, 1],
+  planetHouses: [0, 1],
+  planetLamps: [0, 1],
+  planetTrees: [0, 1],
+  planetCars: [0, MAX_CARS],
+  planetTownSeed: [1, 9999],
+}
+
+function restoreAgent(source) {
+  const out = {
+    planetAgent: source.planetAgent !== false,
+    planetAgentAuto: source.planetAgentAuto !== false,
+    planetFollow: oneOf(source.planetFollow, FOLLOW_IDS, AGENT_DEFAULTS.planetFollow),
+    planetAgentMode: oneOf(source.planetAgentMode, AGENT_MODE_IDS, AGENT_DEFAULTS.planetAgentMode),
+    planetAgentEmote: null,
+    planetRoads: source.planetRoads !== false,
+  }
+  for (const [key, range] of Object.entries(AGENT_RANGES)) {
+    out[key] = num(source[key], AGENT_DEFAULTS[key], ...range)
+  }
+  return out
+}
 
 const WEATHER_IDS = WEATHER_OPS.map((item) => item.id)
 const EVENT_IDS = EVENT_SIMS.map((item) => item.id)
@@ -15,6 +58,49 @@ const CLIMATE_IDS = CLIMATES.map((item) => item.id)
 const COUNTRY_IDS = COUNTRIES.map((item) => item.id)
 const MESH_IDS = MESH_MODES.map((item) => item.id)
 const SHADER_IDS = SHADER_STRATEGIES.map((item) => item.id)
+const BUILDING_IDS = BREAK_BUILDINGS.map((item) => item.id)
+const MAPPING_IDS = PLANET_MAPPINGS.map((item) => item.id)
+const PLANET_MESH_IDS = PLANET_MESHES.map((item) => item.id)
+const HEX = /^#[0-9a-f]{6}$/i
+
+function hexOr(value, fallback) {
+  return HEX.test(String(value)) ? String(value) : fallback
+}
+
+const OCEAN_DEFAULTS = createOceanParams()
+const OCEAN_KEYS = Object.keys(OCEAN_DEFAULTS)
+const OCEAN_RANGES = {
+  planetSeaLevel: [-3, 3],
+  planetOceanRes: [8, 512],
+  planetClarity: [0, 1],
+  planetWaveSpeed: [0, 3],
+  planetWaveScale: [2, 80],
+  planetWaveHeight: [0, 0.3],
+  planetFoamDepth: [0.01, 1],
+  planetFoamSoft: [0, 1],
+  planetRippleWidth: [0.02, 0.6],
+  planetRippleDistance: [0.05, 3],
+}
+
+function restoreOcean(source) {
+  const out = {}
+  for (const key of OCEAN_KEYS) {
+    const fallback = OCEAN_DEFAULTS[key]
+    if (typeof fallback === 'boolean') out[key] = source[key] == null ? fallback : source[key] !== false
+    else if (typeof fallback === 'string') out[key] = hexOr(source[key], fallback)
+    else out[key] = num(source[key], fallback, ...OCEAN_RANGES[key])
+  }
+  return out
+}
+
+function restoreStops(raw, base) {
+  const fallback = Array.isArray(base) && base.length >= 2 ? base : createColorStops()
+  if (!Array.isArray(raw) || raw.length < 2) return fallback.map((stop) => ({ ...stop }))
+  return raw.slice(0, MAX_COLOR_STOPS).map((stop) => ({
+    at: num(stop?.at, 0.5, 0, 1),
+    color: hexOr(stop?.color, '#808080'),
+  }))
+}
 
 function num(value, fallback, min, max) {
   const n = Number(value)
@@ -69,6 +155,25 @@ export function snapshotParams(params) {
       simTime: params.simTime,
       climate: params.climate,
       country: params.country,
+      breakWind: params.breakWind,
+      breakMasonry: params.breakMasonry,
+      breakWood: params.breakWood,
+      breakGravity: params.breakGravity,
+      breakBuilding: params.breakBuilding,
+      planetMapping: params.planetMapping,
+      planetMesh: params.planetMesh,
+      planetDetail: params.planetDetail,
+      planetRelief: params.planetRelief,
+      ...Object.fromEntries(OCEAN_KEYS.map((key) => [key, params[key]])),
+      planetAgent: params.planetAgent !== false,
+      planetAgentAuto: params.planetAgentAuto !== false,
+      planetFollow: params.planetFollow,
+      planetAgentMode: params.planetAgentMode,
+      planetRoads: params.planetRoads !== false,
+      ...Object.fromEntries(Object.keys(AGENT_RANGES).map((key) => [key, params[key]])),
+      planetSpin: params.planetSpin,
+      planetStepped: params.planetStepped === true,
+      planetStops: params.planetStops,
       layers: params.layers,
       csgSolids: params.csgSolids,
     }),
@@ -105,6 +210,22 @@ export function restoreParams(saved, base) {
     simTime: num(source.simTime, 0, 0, 1),
     climate: oneOf(source.climate, CLIMATE_IDS, base.climate),
     country: oneOf(source.country, COUNTRY_IDS, base.country),
+    breakWind: num(source.breakWind, base.breakWind ?? 0.22, 0, 1),
+    breakMasonry: num(source.breakMasonry, base.breakMasonry ?? 0.62, 0, 1),
+    breakWood: num(source.breakWood, base.breakWood ?? 0.48, 0, 1),
+    breakGravity: num(source.breakGravity, base.breakGravity ?? 1, 0.2, 2),
+    breakBuilding: oneOf(source.breakBuilding, BUILDING_IDS, base.breakBuilding ?? 'residential'),
+    breakEpoch: 0,
+    breakPulse: null,
+    planetMapping: oneOf(source.planetMapping, MAPPING_IDS, base.planetMapping ?? 'noise3d'),
+    planetMesh: oneOf(source.planetMesh, PLANET_MESH_IDS, base.planetMesh ?? 'uv'),
+    planetDetail: num(source.planetDetail, base.planetDetail ?? 64, 32, 192),
+    planetRelief: num(source.planetRelief, base.planetRelief ?? 0.55, 0, 1.5),
+    ...restoreOcean(source),
+    ...restoreAgent(source),
+    planetSpin: num(source.planetSpin, base.planetSpin ?? 0.2, 0, 1),
+    planetStepped: source.planetStepped === true,
+    planetStops: restoreStops(source.planetStops, base.planetStops),
     layers: rawLayers.slice(0, MAX_NOISE_LAYERS).map((layer) => createNoiseLayer(layer)),
     csgSolids: rawSolids.slice(0, MAX_CSG_SOLIDS).map((solid) => createSolid(solid)),
   }
