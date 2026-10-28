@@ -60,14 +60,14 @@ The style of the planet was right, but the trees and the color bands looked like
 
 Planet is default. The other tabs stay in the HUD.
 
-| Study | Hash |
-|---|---|
-| Planet | `#planet` |
-| Field | `#field` |
+| Study   | Hash       |
+| ------- | ---------- |
+| Planet  | `#planet`  |
+| Field   | `#field`   |
 | Shaders | `#shaders` |
-| Voxel | `#voxel` |
-| CSG | `#csg` |
-| Break | `#break` |
+| Voxel   | `#voxel`   |
+| CSG     | `#csg`     |
+| Break   | `#break`   |
 
 ## References
 

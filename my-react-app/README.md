@@ -1,6 +1,6 @@
 # Notebook
 
-[Project](../README.md) · [Final project](../Final%20Project.md)
+[Project](../README.md) · [Final project](README_Final%20Project.md)
 
 This is the index the area notes call **All areas**. The live site is [https://pwb2026-3cb0f.web.app](https://pwb2026-3cb0f.web.app). Planet is the final view. The folders below are the studies that led there.
 

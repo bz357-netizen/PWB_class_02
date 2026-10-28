@@ -8,7 +8,7 @@ date: 2026-10-28
 
 # Planet
 
-[All areas](my-react-app/README.md) · [[Final Project]]
+[All areas](my-react-app/README.md) · [[README_Final Project]]
 
 The Field tab is a height on a plane. This view wraps the same noise around a ball, then asks a harder question: if the land is real, where is a house allowed to stand?
 
@@ -26,7 +26,7 @@ Settlement has to follow the ground. **Stepped** only changes the color. The mes
 4. Build a surface sampler so later queries hit the mesh, not a second copy of the noise.
 5. Lay roads on dry land. Place a house only if the whole footprint sits above the shore. Place a tree the same way, then sink it a little so the trunk meets the ground.
 
-The look starts from Messenger. Roads as a painted mask, toon ink, a walker. The land rule comes from **SimCity** and **Cities: Skylines**: a town is a road network on dry ground, not props on a picture. Full list: [[Final Project#References]].
+The look starts from Messenger. Roads as a painted mask, toon ink, a walker. The land rule comes from **SimCity** and **Cities: Skylines**: a town is a road network on dry ground, not props on a picture. Full list: [[README_Final Project#References]].
 
 ## Code
 
