@@ -203,8 +203,14 @@
       "bases:Create new base": false
     }
   },
-  "active": "70276aeecdfc9e46",
+  "active": "542a8e6ab7892aab",
   "lastOpenFiles": [
+    "Pasted image 20261028110459.png",
+    "Pasted image 20261028105545.png",
+    "my-react-app/src/assets/README/NOTEBOOK/10-planet/README.md",
+    "my-react-app/src/assets/README/NOTEBOOK/10-planet",
+    "my-react-app/README.md",
+    "README.md",
     "my-react-app/firebase-debug.log",
     "my-react-app/dist/index.html",
     "my-react-app/dist/assets/jsx-runtime-DSSmCMhe.js",
@@ -214,8 +220,6 @@
     "my-react-app/dist/assets/OrbitControls-DxorN2Av.js",
     "my-react-app/dist/assets/PlanetCanvas-DOL0tWTk.js",
     "my-react-app/dist/assets/index-DpulaLJA.js",
-    "my-react-app/dist/assets/GalaxyCanvas-8tQWhrd_.js",
-    "my-react-app/dist/assets/handOrbit-C72fqjaf.js",
     "Pasted image 20261027214926.png",
     "Pasted image 20261027214823.png",
     "my-react-app/CHATGPT-BRIEF.md",
@@ -232,13 +236,11 @@
     "my-react-app/src/assets/README/NOTEBOOK/screenshots/erosion-session.png",
     "my-react-app/src/assets/README/NOTEBOOK/screenshots/shader-lit.png",
     "my-react-app/src/assets/README/NOTEBOOK/screenshots/voxel-terrain.png",
-    "my-react-app/src/assets/README/NOTEBOOK/screenshots/shader-waterline.png",
     "my-react-app/src/assets/README/NOTEBOOK/06-voxel-csg-meshing/README.md",
     "my-react-app/src/assets/README/NOTEBOOK/09-shaders/README.md",
     "my-react-app/src/assets/README/NOTEBOOK/sessions/0930_Shaders.md",
     "my-react-app/src/assets/README/NOTEBOOK/sessions/0916_Vexel&Firebase.md",
     "my-react-app/src/assets/README/NOTEBOOK/09-shaders/Hi.md",
-    "my-react-app/README.md",
     "NOTEBOOK/README.md",
     "NOTEBOOK/sessions/README.md",
     "my-react-app/src/assets/README/NOTEBOOK/04-react-and-threejs/README.md",
@@ -249,8 +251,6 @@
     "my-react-app/node_modules/@firebase/firestore/README.md",
     "my-react-app/node_modules/@firebase/analytics-compat/README.md",
     "my-react-app/node_modules/@firebase/ai/README.md",
-    "my-react-app/node_modules/get-caller-file/README.md",
-    "my-react-app/node_modules/firebase/README.md",
     "Untitled.canvas"
   ]
 }

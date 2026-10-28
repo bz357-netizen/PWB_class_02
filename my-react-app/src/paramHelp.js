@@ -140,9 +140,10 @@ export const PARAM_HELP = {
     'How many towns to place on land. Roads link every town to its neighbors and add a few loops. Roads never cross water, so islands stay separate.',
   planetRoadWidth: 'Width of the asphalt in world units. The paved curb adds a little on each side.',
   planetHouses:
-    'How tightly houses cluster around each town and line the roads. Their walls block the robot. 0 removes them.',
+    'How tightly houses cluster around each town and line the roads. A house only plants if its whole footprint is dry land, so nothing stands in the lake. Walls block the robot. 0 removes them.',
   planetLamps: 'Street lamp spacing. They alternate sides of the road. 0 removes them.',
-  planetTrees: 'How many trees grow on land away from the roads and houses.',
+  planetTrees:
+    'How many trees grow on land away from the roads and houses. They sit on the same mesh the ground is made of, not on a separate layer.',
   planetCars: 'How many cars drive the roads. At each town they pick a new road at random.',
   planetAgentSize:
     'Height of the robot in world units. Default 0.5 is about 5% of the planet radius, so houses and trees stand taller than the person, as on Messenger.',

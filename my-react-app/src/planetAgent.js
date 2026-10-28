@@ -31,7 +31,7 @@ export function createAgentParams() {
     planetAgent: true,
     planetAgentMode: 'walk',
     planetAgentAuto: true,
-    planetFollow: 'robot',
+    planetFollow: 'free',
     planetAgentSize: 0.5,
     planetAgentSpeed: 1,
     planetAgentEmote: null,

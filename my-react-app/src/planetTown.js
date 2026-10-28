@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
-import { PLANET_RADIUS } from './planet.js'
+import { PLANET_RADIUS, seaRadius } from './planet.js'
 import { groundRadius, isWater } from './planetWalker.js'
 
 export const MAX_CARS = 12
@@ -73,6 +73,44 @@ function towardTangent(dir, to, out) {
   return out.normalize()
 }
 
+const SHORE_CLEAR = 0.12
+const HOUSE_SINK = 0.03
+const TREE_SINK = 0.03
+const HOUSE_HALF_X = 0.525
+const HOUSE_HALF_Z = 0.475
+const siteProbe = new THREE.Vector3()
+const siteSide = new THREE.Vector3()
+
+function aboveShore(dir, params, surface, extra = 0) {
+  return groundRadius(dir, params, surface) >= seaRadius(params) + SHORE_CLEAR + extra
+}
+
+function houseFootprintClear(dir, forward, scale, params, surface) {
+  if (!aboveShore(dir, params, surface)) return false
+  siteSide.crossVectors(dir, forward).normalize()
+  const hx = (HOUSE_HALF_X * scale + 0.2) / PLANET_RADIUS
+  const hz = (HOUSE_HALF_Z * scale + 0.2) / PLANET_RADIUS
+  const corners = [
+    [1, 1],
+    [1, -1],
+    [-1, 1],
+    [-1, -1],
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ]
+  for (const [sx, sz] of corners) {
+    siteProbe
+      .copy(dir)
+      .addScaledVector(siteSide, sx * hx)
+      .addScaledVector(forward, sz * hz)
+      .normalize()
+    if (!aboveShore(siteProbe, params, surface)) return false
+  }
+  return true
+}
+
 function vertexColored(geometry, color) {
   const c = new THREE.Color(color)
   const count = geometry.attributes.position.count
@@ -114,8 +152,11 @@ function makeGeometries() {
 }
 
 /**
- * Roads, houses, street lamps, trees, and little cars, in the spirit of Messenger (messenger.abeto.co).
- * Roads are painted into an equirectangular mask the ground shader reads, so they hug the terrain.
+ * Roads, houses, street lamps, trees, and little cars. The look starts from
+ * Messenger (messenger.abeto.co): toon ink, roads as a texture, a walker on a
+ * ball. The transformation is the class noise stack — houses and trees may only
+ * stand on dry land. Roads are an equirectangular mask the ground shader reads,
+ * so they hug the land.
  */
 export function createPlanetTown({ gradientMap, makeInk }) {
   const root = new THREE.Group()
@@ -316,7 +357,7 @@ export function createPlanetTown({ gradientMap, makeInk }) {
     const probe = new THREE.Vector3()
     for (let tries = 0; tries < 3000 && nodes.length < wanted; tries++) {
       randomDir(rng, probe)
-      if (isWater(probe, params)) continue
+      if (!aboveShore(probe, params, surface)) continue
       if (nodes.some((node) => node.dir.angleTo(probe) < minGap)) continue
       nodes.push({ dir: probe.clone(), used: false })
     }
@@ -339,7 +380,7 @@ export function createPlanetTown({ gradientMap, makeInk }) {
           .addScaledVector(ctrl, 2 * (1 - t) * t)
           .addScaledVector(b, t * t)
           .normalize()
-        if (isWater(p, params)) return null
+        if (isWater(p, params, surface)) return null
         pts.push(p)
       }
       return pts
@@ -421,7 +462,7 @@ export function createPlanetTown({ gradientMap, makeInk }) {
           right.crossVectors(forward, p)
           spot.copy(p).addScaledVector(right, (side * (width / 2 + 0.16)) / PLANET_RADIUS).normalize()
           side = -side
-          if (isWater(spot, params)) continue
+          if (!aboveShore(spot, params, surface, -0.06)) continue
           towardTangent(spot, p, forward)
           push(kinds.lamps, spot, forward, 1, groundRadius(spot, params, surface) - 0.02)
         }
@@ -431,14 +472,14 @@ export function createPlanetTown({ gradientMap, makeInk }) {
     const houses = []
     const houseAmount = params.planetHouses ?? 0.6
     const tryHouse = (dir) => {
-      if (isWater(dir, params)) return
       if (!clearOfRoads(dir, width / 2 + 0.7)) return
       if (houses.some((h) => h.angleTo(dir) * PLANET_RADIUS < 1.45)) return
       const road = nearestRoad(dir)
       if (!road || road.angleTo(dir) * PLANET_RADIUS > width / 2 + 2.2) return
       towardTangent(dir, road, forward)
       const scale = 0.9 + rng() * 0.28
-      const r = groundRadius(dir, params, surface) - 0.06
+      if (!houseFootprintClear(dir, forward, scale, params, surface)) return
+      const r = groundRadius(dir, params, surface) - HOUSE_SINK
       const wall = WALL_COLORS[Math.floor(rng() * WALL_COLORS.length)]
       const roofColor = ROOF_COLORS[Math.floor(rng() * ROOF_COLORS.length)]
       if (push(kinds.walls, dir, forward, scale, r, wall) < 0) return
@@ -458,7 +499,7 @@ export function createPlanetTown({ gradientMap, makeInk }) {
       for (const node of nodes) {
         if (!node.used) continue
         const count = Math.round(THREE.MathUtils.lerp(1, 7, houseAmount))
-        for (let h = 0; h < count * 3 && houses.length < MAX_HOUSES; h++) {
+        for (let h = 0; h < count * 8 && houses.length < MAX_HOUSES; h++) {
           const angle = rng() * Math.PI * 2
           const dist = (width + 1.2 + rng() * 2.2) / PLANET_RADIUS
           towardTangent(node.dir, randomDir(rng, spot), forward).applyAxisAngle(node.dir, angle)
@@ -478,14 +519,14 @@ export function createPlanetTown({ gradientMap, makeInk }) {
     }
 
     const treeCount = Math.round((params.planetTrees ?? 0.5) * MAX_TREES)
-    for (let t = 0, tries = 0; t < treeCount && tries < treeCount * 6; tries++) {
+    for (let t = 0, tries = 0; t < treeCount && tries < treeCount * 14; tries++) {
       randomDir(rng, spot)
-      if (isWater(spot, params)) continue
+      if (!aboveShore(spot, params, surface)) continue
       if (!clearOfRoads(spot, width / 2 + 0.45)) continue
       if (houses.some((h) => h.angleTo(spot) * PLANET_RADIUS < 1.05)) continue
       towardTangent(spot, randomDir(rng, posVec), forward)
       const scale = 0.85 + rng() * 0.4
-      const r = groundRadius(spot, params, surface) - 0.03
+      const r = groundRadius(spot, params, surface) - TREE_SINK
       if (push(kinds.trunks, spot, forward, scale, r) < 0) break
       push(kinds.canopies, spot, forward, scale, r, LEAF_COLORS[Math.floor(rng() * LEAF_COLORS.length)])
       t++

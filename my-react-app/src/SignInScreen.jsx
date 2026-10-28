@@ -75,7 +75,10 @@ export default function SignInScreen({ session, onGuest }) {
           PWB Class
         </p>
         <h1 id="gate-title">Procedural World Building</h1>
-        <p className="gate-tag">A landscape grown from noise, weather, and the shape of the ground.</p>
+        <p className="gate-tag">
+          Settlement has to follow the ground. The class noise stack becomes a planet; towns only
+          stand on dry land.
+        </p>
         {!session.ready ? (
           <p className="gate-status" role="status">Checking the session…</p>
         ) : (

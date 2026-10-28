@@ -62,8 +62,18 @@ const PLANE_RESOLUTIONS = [95, 300, 500, 1000]
 const VOXEL_RESOLUTIONS = [24, 32, 48, 64]
 const CSG_RESOLUTIONS = [16, 24, 32, 40]
 
-function viewFromHash() {
-  return 'planet'
+const VIEWS = [
+  { id: 'planet', label: 'Planet' },
+  { id: 'field', label: 'Field' },
+  { id: 'shaders', label: 'Shaders' },
+  { id: 'voxel', label: 'Voxel' },
+  { id: 'csg', label: 'CSG' },
+  { id: 'break', label: 'Break' },
+]
+
+function viewFromHash(hash = '') {
+  const id = String(hash).replace(/^#/, '').split(/[/?]/)[0]
+  return VIEWS.some((item) => item.id === id) ? id : 'planet'
 }
 
 function shaderFromSearch() {
@@ -439,7 +449,7 @@ function PlanetControls({ params, stats, onChange }) {
     <>
       <PanelSection
         title="Planet"
-        note="The noise layers below shape this ball. Each point is pushed out from the center by the noise height there."
+        note="The same noise stack becomes height on this ball. Stepped only changes the color bands. The ground stays a smooth hill. Houses and trees plant on dry land."
       >
         <p className="panel-note">Mapping</p>
         <div className="btn-row">
@@ -838,7 +848,7 @@ function PlanetControls({ params, stats, onChange }) {
 
       <PanelSection
         title="Town"
-        note="Roads, houses, street lamps, trees and little cars, in the spirit of Messenger. Everything follows the terrain and stays on land."
+        note="Messenger is the look. The rule is ours: houses and trees only stand on dry land. Roads stay out of the water."
       >
         <OnOff value={params.planetRoads !== false} onChange={onChange('planetRoads')} />
         <Slider
@@ -926,10 +936,18 @@ function World({ user, onLeaveGuest }) {
   const [breakStats, setBreakStats] = useState(null)
   const [planetStats, setPlanetStats] = useState(null)
   const [view, setView] = useState(() =>
-    typeof window !== 'undefined' ? viewFromHash(window.location.hash) : 'field',
+    typeof window !== 'undefined' ? viewFromHash(window.location.hash) : 'planet',
   )
   const [panels, setPanels] = useState({ controls: false, noise: false })
   const togglePanel = (key) => setPanels((current) => ({ ...current, [key]: !current[key] }))
+  const goView = (id) => {
+    if (typeof window === 'undefined') return
+    if (window.location.hash.replace(/^#/, '') === id) {
+      setView(id)
+      return
+    }
+    window.location.hash = id
+  }
 
   useEffect(() => {
     const onHash = () => setView(viewFromHash(window.location.hash))
@@ -1094,7 +1112,7 @@ function World({ user, onLeaveGuest }) {
           : 'Noise field'
   const hint =
     view === 'planet'
-      ? 'Drag to turn the planet · The noise layers become height on the ball'
+      ? 'Drag to turn · Settlement stays on dry land. Field, shaders, voxel, and CSG are the studies behind this.'
       : view === 'break'
       ? 'Click a column or a limb · Gust and quake load the joints until they snap'
       : view === 'voxel'
@@ -1131,6 +1149,18 @@ function World({ user, onLeaveGuest }) {
               <span className="tick is-live" aria-hidden="true" />
               PWB Class
             </p>
+            <nav className="view-tabs" aria-label="Studies">
+              {VIEWS.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={view === item.id ? 'is-on' : undefined}
+                  onClick={() => goView(item.id)}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </nav>
           </div>
           <h1>{title}</h1>
           <p className="hint">{hint}</p>

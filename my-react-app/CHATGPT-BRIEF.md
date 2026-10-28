@@ -24,7 +24,7 @@ Open http://127.0.0.1:5173/ and sign in.
 - Sign-in happens before the 3D world. Do not show the terrain until the user is signed in.
 - Saved setups stay private to that account. Do not make Firestore or Storage public.
 - Do not read, print, or commit `.env.local`. It holds the Firebase keys.
-- Field is the default view. Water flow and vortices belong on the Shaders view.
+- Planet is the default view. Field, shaders, voxel, CSG, and break stay reachable from the study tabs and from `#field`, `#shaders`, `#voxel`, `#csg`, `#break`. Water flow and vortices belong on the Shaders view.
 - The right hand sculpts terrain. The left hand orbits the camera. The mouse can still orbit.
 - Keep the dark IBM Plex Mono panel style. Colors and type are defined in `src/index.css`, `src/App.css`, and `src/assets/README/NOTEBOOK/08-interface/STYLE GUIDE.md`.
 

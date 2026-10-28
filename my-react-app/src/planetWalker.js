@@ -1,10 +1,9 @@
 import * as THREE from 'three'
 import { PLANET_RADIUS, planetHeight, seaRadius } from './planet.js'
 
-export function isWater(dir, params) {
+export function isWater(dir, params, surface, margin = 0.04) {
   if (params.planetOcean === false) return false
-  const r = PLANET_RADIUS + planetHeight(dir.x, dir.y, dir.z, params) * (params.planetRelief ?? 0.55)
-  return r < seaRadius(params) + 0.04
+  return groundRadius(dir, params, surface) < seaRadius(params) + margin
 }
 
 const SAMPLER_LON = 96
@@ -183,12 +182,12 @@ export function createWalker() {
   let turnRate = 0
   let placed = false
 
-  const spawn = (params) => {
+  const spawn = (params, surface) => {
     let best = null
     let bestHeight = -Infinity
     for (let i = 0; i < 400; i++) {
       probe.randomDirection()
-      if (!isWater(probe, params)) {
+      if (!isWater(probe, params, surface, 0.2)) {
         best = probe.clone()
         break
       }
@@ -236,7 +235,7 @@ export function createWalker() {
 
   /** Stands `object` on the ground mesh at `dir`, feet down, facing `forward` (+Z of the object). */
   const place = (object, dt, params, surface, collision) => {
-    if (!placed) spawn(params)
+    if (!placed) spawn(params, surface)
     if (collision?.walls?.length) {
       resolveWalls(dir, collision.walls, collision.capsuleRadius ?? 0.1)
       forward.addScaledVector(dir, -forward.dot(dir)).normalize()

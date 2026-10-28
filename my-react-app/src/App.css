@@ -57,6 +57,7 @@
 
 .view-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 10px;
   pointer-events: auto;
@@ -1379,7 +1380,8 @@
 }
 
 .dock-tab,
-.account-chip {
+.account-chip,
+.view-tabs button {
   border: 2px solid var(--ink);
   border-radius: 5px;
   background: var(--sun);
@@ -1401,10 +1403,18 @@
   font-size: var(--text-ui);
 }
 
+.view-tabs button.is-on {
+  background: var(--bg-panel);
+  box-shadow: 3px 3px 0 var(--ink);
+  padding-top: 0;
+}
+
 .dock-tab:hover,
 .dock-tab:focus-visible,
 .account-chip:hover,
-.account-chip:focus-visible {
+.account-chip:focus-visible,
+.view-tabs button:hover,
+.view-tabs button:focus-visible {
   border-color: var(--ink);
   color: var(--ink);
   transform: translate(-1px, -1px);

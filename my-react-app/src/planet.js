@@ -264,6 +264,7 @@ export function buildUnitSphere(kind, detail) {
 /**
  * Pushes every vertex of `unit` out by the noise height and writes the result into `target`.
  * aElev holds elevation in [0, 1] across this planet's lowest and highest point.
+ * Stepped color is a shader read of aElev. It does not stair-step the mesh.
  */
 export function applyPlanetHeights(target, unit, params) {
   const source = unit.attributes.position
