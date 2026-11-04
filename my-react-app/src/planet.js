@@ -348,3 +348,17 @@ export function createOceanParams() {
 }
 
 export const OCEAN_RESOLUTIONS = [32, 64, 128, 256]
+
+/** Live overlays. Not saved with setups. */
+export function createDebugParams() {
+  return {
+    wire: false,
+    land: false,
+    sites: false,
+    agent: false,
+    hideOcean: false,
+    hideTown: false,
+    hideInk: false,
+    hideAgent: false,
+  }
+}

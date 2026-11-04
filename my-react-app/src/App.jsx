@@ -38,6 +38,7 @@ import {
   PLANET_MAPPINGS,
   PLANET_MESHES,
   createColorStops,
+  createDebugParams,
   createOceanParams,
   rampCss,
 } from './planet.js'
@@ -46,9 +47,14 @@ import {
   AGENT_EXPRESSIONS,
   AGENT_MODES,
   FOLLOW_MODES,
+  LOOK_SLOTS,
+  LOOK_SWATCHES,
+  cycleAgentLook,
   createAgentParams,
 } from './planetAgent.js'
 import { MAX_CARS, createTownParams } from './planetTown.js'
+import AgentLook from './AgentLook.jsx'
+import AgentTalk from './AgentTalk.jsx'
 import './App.css'
 
 const GalaxyCanvas = lazy(() => import('./GalaxyCanvas.jsx'))
@@ -124,6 +130,7 @@ const initialParams = {
   planetSpin: 0.2,
   planetStepped: true,
   planetStops: createColorStops(),
+  debug: createDebugParams(),
   layers: [
     createNoiseLayer({
       name: 'Base',
@@ -766,7 +773,7 @@ function PlanetControls({ params, stats, onChange }) {
 
       <PanelSection
         title="Agent"
-        note="The robot from the three.js skinning and morph example. House walls block it. Water is entered by standing on the seabed, so it wades instead of floating."
+        note="The robot from the three.js skinning and morph example. Click it to talk. House walls, tree trunks, and cars are solid. If one is in the way, it turns and takes another path."
       >
         <OnOff
           value={params.planetAgent !== false}
@@ -832,6 +839,34 @@ function PlanetControls({ params, stats, onChange }) {
           onChange={onChange('planetAgentSpeed')}
           helpKey="planetAgentSpeed"
         />
+        <p className="panel-note">Look (Messenger clothes)</p>
+        {LOOK_SLOTS.map((slot) => {
+          const index = params.planetAgentLook?.[slot.id] ?? 0
+          const swatch = LOOK_SWATCHES[index] ?? LOOK_SWATCHES[0]
+          return (
+            <div key={slot.id} className="look-row">
+              <button
+                type="button"
+                aria-label={`Previous ${slot.label}`}
+                onClick={() => onChange('planetAgentLook')(cycleAgentLook(params.planetAgentLook, slot.id, -1))}
+              >
+                ‹
+              </button>
+              <p>
+                {slot.label}
+                <span style={{ background: swatch.main }} />
+                {swatch.label}
+              </p>
+              <button
+                type="button"
+                aria-label={`Next ${slot.label}`}
+                onClick={() => onChange('planetAgentLook')(cycleAgentLook(params.planetAgentLook, slot.id, 1))}
+              >
+                ›
+              </button>
+            </div>
+          )
+        })}
         <p className="panel-note">Expressions</p>
         {AGENT_EXPRESSIONS.map((item) => (
           <Slider
@@ -920,6 +955,168 @@ function PlanetControls({ params, stats, onChange }) {
   )
 }
 
+function formatPct(value) {
+  if (value == null || Number.isNaN(value)) return '…'
+  return `${Math.round(value * 100)}%`
+}
+
+function DebugPanel({ params, stats, onChange, onHide }) {
+  const debug = params.debug ?? createDebugParams()
+  const setFlag = (key) => () => onChange('debug')({ ...debug, [key]: !debug[key] })
+  const hover = stats?.hover
+  const mesh = params.planetMesh === 'cube' ? 'Cube' : 'UV rings'
+
+  return (
+    <aside className="debug-panel panel-frame" aria-label="Planet debug">
+      <div className="panel-head">
+        <h2>Debug</h2>
+        <button type="button" className="panel-hide" onClick={onHide}>
+          Hide
+        </button>
+      </div>
+      <div className="panel-body">
+        <p className="panel-note">
+          Overlays for reading the mesh. They are not saved with a setup.
+        </p>
+        <p className="panel-note">Paint</p>
+        <div className="btn-row">
+          <button type="button" className={debug.land ? 'is-on' : ''} onClick={setFlag('land')}>
+            Land / water
+          </button>
+          <button type="button" className={debug.wire ? 'is-on' : ''} onClick={setFlag('wire')}>
+            Wire
+          </button>
+          <button type="button" className={debug.sites ? 'is-on' : ''} onClick={setFlag('sites')}>
+            Sites
+          </button>
+          <button type="button" className={debug.agent ? 'is-on' : ''} onClick={setFlag('agent')}>
+            Agent
+          </button>
+        </div>
+        {debug.land ? (
+          <p className="panel-note debug-legend">
+            <span>
+              <i className="debug-swatch is-land" />
+              dry
+            </span>
+            <span>
+              <i className="debug-swatch is-shore" />
+              shore
+            </span>
+            <span>
+              <i className="debug-swatch is-water" />
+              water
+            </span>
+          </p>
+        ) : null}
+        {debug.sites ? (
+          <p className="panel-note debug-legend">
+            <span>
+              <i className="debug-swatch is-house" />
+              house
+            </span>
+            <span>
+              <i className="debug-swatch is-tree" />
+              tree
+            </span>
+            <span>
+              <i className="debug-swatch is-lamp" />
+              lamp
+            </span>
+          </p>
+        ) : null}
+        {debug.agent ? (
+          <p className="panel-note debug-legend">
+            <span>
+              <i className="debug-swatch is-agent" />
+              capsule
+            </span>
+            <span>
+              <i className="debug-swatch is-heading" />
+              heading
+            </span>
+          </p>
+        ) : null}
+        <p className="panel-note">Hide</p>
+        <div className="btn-row">
+          <button
+            type="button"
+            className={debug.hideOcean ? 'is-on' : ''}
+            onClick={setFlag('hideOcean')}
+          >
+            Ocean
+          </button>
+          <button
+            type="button"
+            className={debug.hideTown ? 'is-on' : ''}
+            onClick={setFlag('hideTown')}
+          >
+            Town
+          </button>
+          <button
+            type="button"
+            className={debug.hideInk ? 'is-on' : ''}
+            onClick={setFlag('hideInk')}
+          >
+            Ink
+          </button>
+          <button
+            type="button"
+            className={debug.hideAgent ? 'is-on' : ''}
+            onClick={setFlag('hideAgent')}
+          >
+            Agent
+          </button>
+        </div>
+        <div className="layer-actions">
+          <button type="button" onClick={() => onChange('debug')(createDebugParams())}>
+            Clear overlays
+          </button>
+        </div>
+        <p className="panel-note">Mesh</p>
+        <p className="debug-line">
+          {mesh} · {Math.round(params.planetDetail ?? 64)}
+          {stats
+            ? ` · ${stats.vertices.toLocaleString()} v · ${stats.triangles.toLocaleString()} t · ${stats.ms} ms`
+            : ' · …'}
+        </p>
+        <p className="debug-line">
+          land {formatPct(stats?.land)} · sea {stats?.sea != null ? stats.sea.toFixed(2) : '…'}
+        </p>
+        <p className="panel-note">Town</p>
+        <p className="debug-line">
+          {stats
+            ? `${stats.towns ?? 0} towns · ${stats.roads ?? 0} roads · ${stats.houses ?? 0} houses · ${stats.trees ?? 0} trees · ${stats.lamps ?? 0} lamps`
+            : '…'}
+        </p>
+        <p className="panel-note">Agent</p>
+        {stats?.agent ? (
+          <p className="debug-line">
+            {stats.agent.moving ? 'walk' : 'idle'}
+            {stats.agent.stuck > 0 ? ` · stuck ${stats.agent.stuck}` : ''}
+            {stats.agent.place ? ` · ${stats.agent.place}` : ''}
+            {` · ${stats.agent.zone} · Δ ${stats.agent.delta >= 0 ? '+' : ''}${stats.agent.delta.toFixed(2)}`}
+            {` · ${stats.agent.lat.toFixed(1)}° / ${stats.agent.lon.toFixed(1)}°`}
+          </p>
+        ) : (
+          <p className="debug-line">Robot is off, or still loading.</p>
+        )}
+        <p className="panel-note">Hover</p>
+        {hover ? (
+          <p className="debug-line">
+            {hover.zone} · Δ {hover.delta >= 0 ? '+' : ''}
+            {hover.delta.toFixed(2)} · r {hover.radius.toFixed(2)}
+            {hover.elev == null ? '' : ` · elev ${hover.elev.toFixed(2)}`} · {hover.lat.toFixed(1)}° /{' '}
+            {hover.lon.toFixed(1)}°
+          </p>
+        ) : (
+          <p className="debug-line">Move over the ground for a sample.</p>
+        )}
+      </div>
+    </aside>
+  )
+}
+
 function World({ user, onLeaveGuest }) {
   const paramsRef = useRef({
     ...initialParams,
@@ -928,6 +1125,7 @@ function World({ user, onLeaveGuest }) {
     scatter: Object.fromEntries(
       Object.entries(initialParams.scatter).map(([id, value]) => [id, { ...value }]),
     ),
+    debug: { ...initialParams.debug },
   })
   const [params, setParams] = useState(initialParams)
   const [selected, setSelected] = useState(0)
@@ -938,7 +1136,13 @@ function World({ user, onLeaveGuest }) {
   const [view, setView] = useState(() =>
     typeof window !== 'undefined' ? viewFromHash(window.location.hash) : 'planet',
   )
-  const [panels, setPanels] = useState({ controls: false, noise: false })
+  const [panels, setPanels] = useState({ controls: false, noise: false, debug: false })
+  const [talkOpen, setTalkOpen] = useState(false)
+  const [lookOpen, setLookOpen] = useState(false)
+  const debugOpenRef = useRef(false)
+  const talkOpenRef = useRef(false)
+  debugOpenRef.current = view === 'planet' && panels.debug
+  talkOpenRef.current = view === 'planet' && (talkOpen || lookOpen)
   const togglePanel = (key) => setPanels((current) => ({ ...current, [key]: !current[key] }))
   const goView = (id) => {
     if (typeof window === 'undefined') return
@@ -957,6 +1161,7 @@ function World({ user, onLeaveGuest }) {
 
   useEffect(() => {
     if (view === 'break') setPanels((current) => ({ ...current, controls: true }))
+    if (view !== 'planet') setTalkOpen(false)
   }, [view])
 
   useEffect(() => {
@@ -1112,7 +1317,7 @@ function World({ user, onLeaveGuest }) {
           : 'Noise field'
   const hint =
     view === 'planet'
-      ? 'Drag to turn · Settlement stays on dry land. Field, shaders, voxel, and CSG are the studies behind this.'
+      ? 'Drag to turn · Click the robot to talk. Shirt changes its look, like Messenger.'
       : view === 'break'
       ? 'Click a column or a limb · Gust and quake load the joints until they snap'
       : view === 'voxel'
@@ -1127,7 +1332,16 @@ function World({ user, onLeaveGuest }) {
     <div className="app">
       <Suspense fallback={<p className="scene-loading">Loading the terrain…</p>}>
         {view === 'planet' ? (
-          <PlanetCanvas paramsRef={paramsRef} onStats={setPlanetStats} />
+          <PlanetCanvas
+            paramsRef={paramsRef}
+            debugOpenRef={debugOpenRef}
+            talkOpenRef={talkOpenRef}
+            onTalk={(open) => {
+              setTalkOpen(open)
+              if (!open) setLookOpen(false)
+            }}
+            onStats={setPlanetStats}
+          />
         ) : view === 'break' ? (
           <DeconstructCanvas paramsRef={paramsRef} onStats={setBreakStats} />
         ) : view === 'csg' ? (
@@ -1205,7 +1419,7 @@ function World({ user, onLeaveGuest }) {
           params={params}
           baseParams={initialParams}
           onRestore={(next) => {
-            commit(next)
+            commit({ ...next, debug: params.debug ?? createDebugParams() })
             setSelected(0)
           }}
         />
@@ -1230,6 +1444,48 @@ function World({ user, onLeaveGuest }) {
           <button type="button" className="dock-tab is-noise" onClick={() => togglePanel('noise')}>
             {view === 'csg' ? 'Density' : view === 'planet' ? '2D Map' : '2D Noise'}
           </button>
+        ) : null}
+
+        {view === 'planet' && panels.debug ? (
+          <DebugPanel
+            params={params}
+            stats={planetStats}
+            onChange={bind}
+            onHide={() => togglePanel('debug')}
+          />
+        ) : view === 'planet' ? (
+          <button type="button" className="dock-tab is-debug" onClick={() => togglePanel('debug')}>
+            Debug
+          </button>
+        ) : null}
+
+        {view === 'planet' && lookOpen ? (
+          <AgentLook
+            look={params.planetAgentLook}
+            anchors={planetStats?.agent?.lookAnchors}
+            onChange={bind('planetAgentLook')}
+            onHide={() => {
+              setLookOpen(false)
+              setTalkOpen(true)
+            }}
+          />
+        ) : view === 'planet' && talkOpen ? (
+          <AgentTalk
+            ctx={{
+              weather: params.weather,
+              timeOfDay: params.timeOfDay,
+              zone: planetStats?.agent?.zone,
+              stuck: planetStats?.agent?.stuck,
+              place: planetStats?.agent?.place,
+              delta: planetStats?.agent?.delta,
+            }}
+            onEmote={(name) => bind('planetAgentEmote')({ name, id: Date.now() })}
+            onLook={() => {
+              setTalkOpen(false)
+              setLookOpen(true)
+            }}
+            onHide={() => setTalkOpen(false)}
+          />
         ) : null}
 
         {panels.controls ? (

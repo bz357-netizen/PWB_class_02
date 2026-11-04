@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { PLANET_RADIUS, seaRadius } from './planet.js'
-import { groundRadius, isWater } from './planetWalker.js'
+import { groundRadius, isWater, slideOnPlanet } from './planetWalker.js'
 
 export const MAX_CARS = 12
 
@@ -73,13 +73,27 @@ function towardTangent(dir, to, out) {
   return out.normalize()
 }
 
-const SHORE_CLEAR = 0.12
+export const SHORE_CLEAR = 0.12
+/** Local Y of the taller canopy blob (icosahedron 0.32 at y 1.45). */
+export const TREE_CANOPY_TOP = 1.77
+export const TREE_SCALE_MAX = 1.25
 const HOUSE_SINK = 0.03
 const TREE_SINK = 0.03
 const HOUSE_HALF_X = 0.525
 const HOUSE_HALF_Z = 0.475
 const siteProbe = new THREE.Vector3()
 const siteSide = new THREE.Vector3()
+const placeOffset = new THREE.Vector3()
+
+function gapToBox(dir, box) {
+  if (!box?.dir || dir.dot(box.dir) < Math.cos(2.6 / PLANET_RADIUS)) return Infinity
+  placeOffset.copy(dir).addScaledVector(box.dir, -dir.dot(box.dir))
+  const x = placeOffset.dot(box.side) * PLANET_RADIUS
+  const z = placeOffset.dot(box.forward) * PLANET_RADIUS
+  const dx = Math.max(0, Math.abs(x) - (box.halfX ?? 0))
+  const dz = Math.max(0, Math.abs(z) - (box.halfZ ?? 0))
+  return Math.hypot(dx, dz)
+}
 
 function aboveShore(dir, params, surface, extra = 0) {
   return groundRadius(dir, params, surface) >= seaRadius(params) + SHORE_CLEAR + extra
@@ -155,8 +169,8 @@ function makeGeometries() {
  * Roads, houses, street lamps, trees, and little cars. The look starts from
  * Messenger (messenger.abeto.co): toon ink, roads as a texture, a walker on a
  * ball. The transformation is the class noise stack — houses and trees may only
- * stand on dry land. Roads are an equirectangular mask the ground shader reads,
- * so they hug the land.
+ * stand on dry land. Trunks and cars are solid to the walker. Roads are an
+ * equirectangular mask the ground shader reads, so they hug the land.
  */
 export function createPlanetTown({ gradientMap, makeInk }) {
   const root = new THREE.Group()
@@ -244,8 +258,12 @@ export function createPlanetTown({ gradientMap, makeInk }) {
 
   let edges = []
   let adjacency = []
+  let roadPoints = []
   const cars = []
   const walls = []
+  const trunks = []
+  const sites = { houses: [], trees: [], lamps: [] }
+  const counts = { towns: 0, roads: 0, houses: 0, lamps: 0, trees: 0 }
 
   const paintMask = (nodes, width) => {
     const [asphalt, dash, paving] = canvases.map((canvas) => {
@@ -339,8 +357,18 @@ export function createPlanetTown({ gradientMap, makeInk }) {
     for (const kind of Object.values(kinds)) kind.n = 0
     edges = []
     adjacency = []
+    roadPoints = []
     cars.length = 0
     walls.length = 0
+    trunks.length = 0
+    sites.houses.length = 0
+    sites.trees.length = 0
+    sites.lamps.length = 0
+    counts.towns = 0
+    counts.roads = 0
+    counts.houses = 0
+    counts.lamps = 0
+    counts.trees = 0
 
     if (params.planetRoads === false) {
       clearMask()
@@ -426,7 +454,7 @@ export function createPlanetTown({ gradientMap, makeInk }) {
 
     paintMask(nodes, width)
 
-    const roadPoints = edges.flatMap((edge) => edge.pts)
+    roadPoints = edges.flatMap((edge) => edge.pts)
     for (const node of nodes) if (node.used) roadPoints.push(node.dir)
     const clearOfRoads = (dir, gap) => {
       const limit = Math.cos(gap / PLANET_RADIUS)
@@ -464,7 +492,9 @@ export function createPlanetTown({ gradientMap, makeInk }) {
           side = -side
           if (!aboveShore(spot, params, surface, -0.06)) continue
           towardTangent(spot, p, forward)
-          push(kinds.lamps, spot, forward, 1, groundRadius(spot, params, surface) - 0.02)
+          const lampR = groundRadius(spot, params, surface) - 0.02
+          push(kinds.lamps, spot, forward, 1, lampR)
+          sites.lamps.push(spot.clone().multiplyScalar(lampR))
         }
       }
     }
@@ -485,6 +515,7 @@ export function createPlanetTown({ gradientMap, makeInk }) {
       if (push(kinds.walls, dir, forward, scale, r, wall) < 0) return
       push(kinds.roofs, dir, forward, scale, r, roofColor)
       push(kinds.doors, dir, forward, scale, r)
+      sites.houses.push(dir.clone().multiplyScalar(r))
       houses.push(dir.clone())
       sideVec.crossVectors(dir, forward).normalize()
       walls.push({
@@ -529,8 +560,16 @@ export function createPlanetTown({ gradientMap, makeInk }) {
       const r = groundRadius(spot, params, surface) - TREE_SINK
       if (push(kinds.trunks, spot, forward, scale, r) < 0) break
       push(kinds.canopies, spot, forward, scale, r, LEAF_COLORS[Math.floor(rng() * LEAF_COLORS.length)])
+      sites.trees.push(spot.clone().multiplyScalar(r))
+      trunks.push({ dir: spot.clone(), radius: 0.11 * scale })
       t++
     }
+
+    counts.towns = nodes.filter((node) => node.used).length
+    counts.roads = edges.length
+    counts.houses = kinds.walls.n
+    counts.lamps = kinds.lamps.n
+    counts.trees = kinds.trunks.n
 
     for (const kind of Object.values(kinds)) if (kind !== kinds.cars) finish(kind)
   }
@@ -548,21 +587,84 @@ export function createPlanetTown({ gradientMap, makeInk }) {
       s: Math.random() * edges[edge].total,
       speed: 1.2 + Math.random() * 0.8,
       color: CAR_COLORS[index % CAR_COLORS.length],
+      dir: new THREE.Vector3(0, 1, 0),
+      forward: new THREE.Vector3(0, 0, 1),
+      side: new THREE.Vector3(),
+      slide: new THREE.Vector3(),
+      stun: 0,
+      offRoad: false,
+      halfX: 0.16,
+      halfZ: 0.28,
     }
     kinds.cars.mesh.setColorAt(index, color.set(cars[index].color))
     kinds.cars.mesh.instanceColor.needsUpdate = true
   }
 
+  const snapToRoad = (car) => {
+    if (!edges.length) return
+    let bestDot = -2
+    let bestEdge = car.edge
+    let bestS = car.s
+    for (let e = 0; e < edges.length; e++) {
+      const pts = edges[e].pts
+      const step = Math.max(1, Math.floor(pts.length / 18))
+      for (let k = 0; k < pts.length; k += step) {
+        const d = car.dir.dot(pts[k])
+        if (d > bestDot) {
+          bestDot = d
+          bestEdge = e
+          bestS = edges[e].cum[k]
+        }
+      }
+    }
+    car.edge = bestEdge
+    car.s = bestS
+    car.offRoad = false
+    car.slide.set(0, 0, 0)
+  }
+
+  const writeCar = (index, params, surface) => {
+    const car = cars[index]
+    if (!car?.dir) return
+    writeInstance(
+      kinds.cars,
+      index,
+      car.dir,
+      car.forward,
+      1,
+      groundRadius(car.dir, params, surface),
+    )
+  }
+
   /** Drives the cars. Call every frame after `build`. */
   const update = (dt, params, surface) => {
-    root.visible = params.planetRoads !== false
+    root.visible = params.planetRoads !== false && params.debug?.hideTown !== true
     const kind = kinds.cars
     const count = edges.length ? Math.min(MAX_CARS, Math.round(params.planetCars ?? 5)) : 0
     const width = params.planetRoadWidth ?? 0.4
     for (let i = 0; i < count; i++) {
       if (!cars[i]) spawnCar(i)
       const car = cars[i]
+      if (car.stun > 0) car.stun -= dt
+
+      const sliding = slideOnPlanet(car, dt, params, surface)
+      if (sliding) {
+        writeCar(i, params, surface)
+        continue
+      }
+
+      if (car.stun > 0) {
+        writeCar(i, params, surface)
+        continue
+      }
+
+      if (car.offRoad) snapToRoad(car)
+
       let edge = edges[car.edge]
+      if (!edge) {
+        spawnCar(i)
+        continue
+      }
       car.s += car.speed * dt * car.sign
       if (car.s > edge.total || car.s < 0) {
         const node = car.s > edge.total ? edge.b : edge.a
@@ -581,11 +683,72 @@ export function createPlanetTown({ gradientMap, makeInk }) {
       carDir.copy(edge.pts[k - 1]).lerp(edge.pts[k], t).normalize()
       towardTangent(carDir, car.sign > 0 ? edge.pts[k] : edge.pts[k - 1], carForward)
       carRight.crossVectors(carForward, carDir)
-      carDir.addScaledVector(carRight, (width * 0.24) / PLANET_RADIUS).normalize()
-      writeInstance(kind, i, carDir, carForward, 1, groundRadius(carDir, params, surface))
+      car.dir.copy(carDir).addScaledVector(carRight, (width * 0.24) / PLANET_RADIUS).normalize()
+      car.forward.copy(carForward)
+      writeCar(i, params, surface)
     }
+    if (cars.length > count) cars.length = count
+
     kind.n = count
     finish(kind)
+  }
+
+  const syncCars = (params, surface) => {
+    const count = kinds.cars.n
+    for (let i = 0; i < count; i++) writeCar(i, params, surface)
+    finish(kinds.cars)
+  }
+
+  /** Where the walker is standing: water, shore, house, road, car, forest, jammed, or land. */
+  const placeAt = (dir, extras = {}) => {
+    if (!dir) return 'land'
+    const delta = extras.delta ?? 0
+    const stuck = extras.stuck ?? 0
+    const radius = extras.radius ?? 0.1
+    if (delta < 0) return 'water'
+    if (extras.hideTown === true) return delta < SHORE_CLEAR + 0.32 ? 'shore' : 'land'
+
+    let houseGap = Infinity
+    for (const wall of walls) {
+      const gap = gapToBox(dir, wall)
+      if (gap < houseGap) houseGap = gap
+    }
+    const nearHouse = houseGap < 0.55 + radius
+
+    let treeNear = 0
+    let treeGap = Infinity
+    const treeReach = Math.cos(1.2 / PLANET_RADIUS)
+    for (const trunk of trunks) {
+      if (dir.dot(trunk.dir) < treeReach) continue
+      const gap = Math.max(0, dir.angleTo(trunk.dir) * PLANET_RADIUS - (trunk.radius ?? 0))
+      if (gap < treeGap) treeGap = gap
+      if (gap < 0.9) treeNear += 1
+    }
+    const inTrees = treeNear >= 3 || treeGap < 0.22 + radius
+
+    let carGap = Infinity
+    for (const car of cars) {
+      const gap = gapToBox(dir, car)
+      if (gap < carGap) carGap = gap
+    }
+    const nearCar = carGap < 0.5 + radius
+
+    let roadGap = Infinity
+    const roadReach = Math.cos(1.15 / PLANET_RADIUS)
+    for (const point of roadPoints) {
+      if (dir.dot(point) < roadReach) continue
+      const gap = dir.angleTo(point) * PLANET_RADIUS
+      if (gap < roadGap) roadGap = gap
+    }
+    const nearRoad = roadGap < 0.55
+
+    if (stuck >= 2 && nearHouse && treeNear >= 1) return 'jammed'
+    if (stuck >= 2 && inTrees) return 'forest'
+    if (nearCar) return 'car'
+    if (nearHouse) return 'house'
+    if (delta < SHORE_CLEAR + 0.32) return 'shore'
+    if (nearRoad) return 'road'
+    return 'land'
   }
 
   const dispose = () => {
@@ -598,5 +761,5 @@ export function createPlanetTown({ gradientMap, makeInk }) {
     roadTexture.dispose()
   }
 
-  return { root, roadTexture, walls, build, update, dispose }
+  return { root, roadTexture, walls, trunks, cars, sites, counts, build, update, syncCars, placeAt, dispose }
 }

@@ -12,8 +12,9 @@ import {
   sortedStops,
 } from './planet.js'
 import { createPlanetAgent } from './planetAgent.js'
-import { createPlanetTown, townFingerprint } from './planetTown.js'
-import { createSurfaceSampler } from './planetWalker.js'
+import { SHORE_CLEAR, createPlanetTown, townFingerprint } from './planetTown.js'
+import { createPlanetUfo } from './planetUfo.js'
+import { blockedAt, createSurfaceSampler, groundRadius } from './planetWalker.js'
 
 const INK = 0x1e2b2b
 /** Ink outline thickness in world units (planet radius is 10). */
@@ -193,10 +194,12 @@ diffuseColor.a = mix(uOpacity, 1.0, foamMask);`,
   return material
 }
 
-export default function PlanetCanvas({ paramsRef, onStats }) {
+export default function PlanetCanvas({ paramsRef, debugOpenRef, talkOpenRef, onTalk, onStats }) {
   const mountRef = useRef(null)
   const onStatsRef = useRef(onStats)
+  const onTalkRef = useRef(onTalk)
   onStatsRef.current = onStats
+  onTalkRef.current = onTalk
 
   useEffect(() => {
     const mount = mountRef.current
@@ -227,6 +230,54 @@ export default function PlanetCanvas({ paramsRef, onStats }) {
     controls.addEventListener('end', () => (heldUntil = performance.now() + 2000))
     const followDir = new THREE.Vector3()
     const camDir = new THREE.Vector3()
+    const talkLook = new THREE.Vector3()
+    const talkUp = new THREE.Vector3()
+    const talkFwd = new THREE.Vector3()
+    const lookRight = new THREE.Vector3()
+    const lookPoint = new THREE.Vector3()
+    const LOOK_PARTS = [
+      ['close', 1.1],
+      ['head', 0.86],
+      ['body', 0.54],
+      ['legs', 0.3],
+      ['feet', 0.07],
+    ]
+    const talkCam = {
+      on: false,
+      pos: new THREE.Vector3(),
+      up: new THREE.Vector3(),
+      target: new THREE.Vector3(),
+    }
+
+    const lockTalkCamera = () => {
+      talkCam.pos.copy(camera.position)
+      talkCam.up.copy(camera.up)
+      talkCam.target.copy(controls.target)
+      const info = agent.getCollision()
+      agent.root.getWorldPosition(talkLook)
+      talkUp.copy(info.dir).transformDirection(planet.matrixWorld).normalize()
+      talkFwd.copy(info.forward).transformDirection(planet.matrixWorld).normalize()
+      const size = Math.max(0.28, info.size ?? 0.5)
+      talkLook.addScaledVector(talkUp, size * 0.7)
+      camera.up.copy(talkUp)
+      camera.position
+        .copy(talkLook)
+        .addScaledVector(talkFwd, Math.max(1.45, size * 2.8))
+        .addScaledVector(talkUp, size * 0.12)
+      camera.lookAt(talkLook)
+      controls.target.copy(talkLook)
+      controls.enabled = false
+      talkCam.on = true
+    }
+
+    const unlockTalkCamera = () => {
+      camera.position.copy(talkCam.pos)
+      camera.up.copy(talkCam.up)
+      controls.target.copy(talkCam.target)
+      controls.enabled = true
+      talkCam.on = false
+      heldUntil = performance.now() + 1600
+    }
 
     const ambient = new THREE.AmbientLight(0xeaf4f0, 1.5)
     scene.add(ambient)
@@ -273,6 +324,11 @@ export default function PlanetCanvas({ paramsRef, onStats }) {
       makeInk: () => makeOutlineMaterial(0),
     })
     planet.add(agent.root)
+    const ufo = createPlanetUfo({
+      gradientMap: toonRamp,
+      makeInk: () => makeOutlineMaterial(0),
+    })
+    planet.add(ufo.root)
 
     const seaInkGeom = new THREE.SphereGeometry(1, 96, 64)
     const seaInkMat = makeOutlineMaterial(0)
@@ -287,7 +343,65 @@ export default function PlanetCanvas({ paramsRef, onStats }) {
     })
     const wire = new THREE.Mesh(groundGeom, wireMat)
     wire.visible = false
+    wire.renderOrder = 1
     planet.add(wire)
+
+    const debugGeom = new THREE.BufferGeometry()
+    const debugLandMat = new THREE.MeshBasicMaterial({
+      vertexColors: true,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+    })
+    const debugLand = new THREE.Mesh(debugGeom, debugLandMat)
+    debugLand.visible = false
+    planet.add(debugLand)
+
+    const siteGeom = new THREE.BufferGeometry()
+    const siteMat = new THREE.PointsMaterial({
+      size: 8,
+      sizeAttenuation: false,
+      vertexColors: true,
+      depthTest: true,
+    })
+    const sitePoints = new THREE.Points(siteGeom, siteMat)
+    sitePoints.visible = false
+    sitePoints.renderOrder = 2
+    planet.add(sitePoints)
+
+    const probe = new THREE.Mesh(
+      new THREE.SphereGeometry(0.09, 10, 8),
+      new THREE.MeshBasicMaterial({ color: 0xfff04a }),
+    )
+    probe.visible = false
+    probe.renderOrder = 3
+    planet.add(probe)
+
+    const agentGizmo = new THREE.Group()
+    agentGizmo.visible = false
+    agentGizmo.renderOrder = 4
+    const agentCapMat = new THREE.MeshBasicMaterial({
+      color: 0xffc43a,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.9,
+    })
+    const agentCap = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 12), agentCapMat)
+    const agentLookMat = new THREE.LineBasicMaterial({ color: 0x4ec4ff })
+    const agentLook = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, 0.06, 0),
+        new THREE.Vector3(0, 0.06, 1),
+      ]),
+      agentLookMat,
+    )
+    const agentTipMat = new THREE.MeshBasicMaterial({ color: 0x38b861 })
+    const agentTip = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6), agentTipMat)
+    agentGizmo.add(agentCap, agentLook, agentTip)
+    planet.add(agentGizmo)
+    const gizmoSide = new THREE.Vector3()
+    const gizmoBasis = new THREE.Matrix4()
+    const gizmoAhead = new THREE.Vector3()
 
     const depthTarget = new THREE.WebGLRenderTarget(1, 1, { depthBuffer: true })
     depthTarget.depthTexture = new THREE.DepthTexture(1, 1)
@@ -337,6 +451,162 @@ export default function PlanetCanvas({ paramsRef, onStats }) {
     let lastBuild = 0
     let stats = null
     let countedSea = NaN
+    let hover = null
+    let lastHoverKey = ''
+    let agentInfo = null
+    let lastAgentKey = ''
+    const pointer = new THREE.Vector2(2, 2)
+    const raycaster = new THREE.Raycaster()
+    const localHit = new THREE.Vector3()
+
+    const publishStats = () => {
+      if (!stats) return
+      onStatsRef.current?.({ ...stats, ...town.counts, hover, agent: agentInfo })
+    }
+
+    const syncAgentDebug = (params) => {
+      const pose = agent.getCollision()
+      const show = params.debug?.agent === true && params.planetAgent !== false
+      agentGizmo.visible = show
+      if (params.planetAgent === false || !pose?.dir) {
+        agentInfo = null
+        return
+      }
+      const r = groundRadius(pose.dir, params, surface)
+      const sea = seaRadius(params)
+      const delta = r - sea
+      agent.root.getWorldPosition(talkLook)
+      talkUp.copy(pose.dir).transformDirection(planet.matrixWorld).normalize()
+      lookRight.setFromMatrixColumn(camera.matrixWorld, 0).normalize()
+      const height = pose.size ?? 0.5
+      const spread = Math.max(0.42, height * 0.78)
+      const toScreen = (world) => {
+        lookPoint.copy(world).project(camera)
+        return {
+          x: THREE.MathUtils.clamp(Math.round((lookPoint.x * 0.5 + 0.5) * 1000) / 10, 6, 94),
+          y: THREE.MathUtils.clamp(Math.round((-lookPoint.y * 0.5 + 0.5) * 1000) / 10, 6, 94),
+        }
+      }
+      const lookAnchors = {}
+      for (const [id, along] of LOOK_PARTS) {
+        lookPoint.copy(talkLook).addScaledVector(talkUp, height * along)
+        if (id === 'close') {
+          lookAnchors.close = toScreen(lookPoint)
+          continue
+        }
+        lookAnchors[id] = {
+          left: toScreen(lookPoint.addScaledVector(lookRight, -spread)),
+          right: toScreen(lookPoint.copy(talkLook).addScaledVector(talkUp, height * along).addScaledVector(lookRight, spread)),
+        }
+      }
+      agentInfo = {
+        lat: Math.asin(THREE.MathUtils.clamp(pose.dir.y, -1, 1)) * (180 / Math.PI),
+        lon: Math.atan2(pose.dir.z, pose.dir.x) * (180 / Math.PI),
+        radius: r,
+        sea,
+        delta,
+        zone: delta < 0 ? 'water' : delta < SHORE_CLEAR ? 'shore' : 'land',
+        moving: pose.moving,
+        stuck: pose.stuck ?? 0,
+        place: town.placeAt(pose.dir, {
+          delta,
+          stuck: pose.stuck ?? 0,
+          radius: pose.radius,
+          hideTown: params.debug?.hideTown === true,
+        }),
+        lookAnchors,
+      }
+      if (!show) return
+      agentGizmo.position.copy(pose.dir).multiplyScalar(r)
+      gizmoSide.crossVectors(pose.dir, pose.forward)
+      if (gizmoSide.lengthSq() < 1e-8) gizmoSide.set(0, 1, 0).cross(pose.dir)
+      gizmoSide.normalize()
+      gizmoBasis.makeBasis(gizmoSide, pose.dir, pose.forward)
+      agentGizmo.quaternion.setFromRotationMatrix(gizmoBasis)
+      agentCap.scale.set(pose.radius, height, pose.radius)
+      agentCap.position.y = height * 0.5
+      agentLook.scale.set(1, 1, 0.9)
+      agentTip.position.set(0, height * 0.18, 0.82)
+      const ang = 0.82 / PLANET_RADIUS
+      gizmoAhead
+        .copy(pose.dir)
+        .multiplyScalar(Math.cos(ang))
+        .addScaledVector(pose.forward, Math.sin(ang))
+        .normalize()
+      const hideTown = params.debug?.hideTown === true
+      agentTipMat.color.setHex(
+        blockedAt(
+          gizmoAhead,
+          {
+            walls: hideTown ? [] : town.walls,
+            trunks: hideTown ? [] : town.trunks,
+            cars: hideTown ? [] : town.cars,
+          },
+          pose.radius * 1.12,
+        )
+          ? 0xe05a47
+          : 0x38b861,
+      )
+    }
+
+    const paintDebugLand = (params) => {
+      const pos = groundGeom.attributes.position
+      if (!pos) return
+      debugGeom.setAttribute('position', pos)
+      debugGeom.setIndex(groundGeom.index)
+      const count = pos.count
+      let colors = debugGeom.attributes.color
+      if (!colors || colors.count !== count) {
+        colors = new THREE.BufferAttribute(new Float32Array(count * 3), 3)
+        debugGeom.setAttribute('color', colors)
+      }
+      const sea = seaRadius(params)
+      const shore = sea + SHORE_CLEAR
+      const arr = colors.array
+      for (let i = 0; i < count; i++) {
+        const r = Math.hypot(pos.getX(i), pos.getY(i), pos.getZ(i))
+        if (r < sea) {
+          arr[i * 3] = 0.16
+          arr[i * 3 + 1] = 0.44
+          arr[i * 3 + 2] = 0.62
+        } else if (r < shore) {
+          arr[i * 3] = 0.93
+          arr[i * 3 + 1] = 0.72
+          arr[i * 3 + 2] = 0.28
+        } else {
+          arr[i * 3] = 0.42
+          arr[i * 3 + 1] = 0.7
+          arr[i * 3 + 2] = 0.4
+        }
+      }
+      colors.needsUpdate = true
+      debugGeom.computeBoundingSphere()
+    }
+
+    const syncSitePoints = () => {
+      const { houses, trees, lamps } = town.sites
+      const n = houses.length + trees.length + lamps.length
+      const pos = new Float32Array(n * 3)
+      const col = new Float32Array(n * 3)
+      let i = 0
+      const write = (list, r, g, b) => {
+        for (const p of list) {
+          pos[i * 3] = p.x
+          pos[i * 3 + 1] = p.y
+          pos[i * 3 + 2] = p.z
+          col[i * 3] = r
+          col[i * 3 + 1] = g
+          col[i * 3 + 2] = b
+          i++
+        }
+      }
+      write(houses, 0.88, 0.35, 0.28)
+      write(trees, 0.22, 0.72, 0.38)
+      write(lamps, 1, 0.86, 0.32)
+      siteGeom.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+      siteGeom.setAttribute('color', new THREE.BufferAttribute(col, 3))
+      siteGeom.computeBoundingSphere()
+    }
 
     const countLand = (params) => {
       const elev = groundGeom.attributes.aElev?.array
@@ -345,8 +615,13 @@ export default function PlanetCanvas({ paramsRef, onStats }) {
       let land = 0
       for (let i = 0; i < elev.length; i++) if (elev[i] > seaT) land++
       countedSea = params.planetSeaLevel ?? 0
-      stats = { ...stats, seaT, land: land / Math.max(1, elev.length) }
-      onStatsRef.current?.(stats)
+      stats = {
+        ...stats,
+        seaT,
+        land: land / Math.max(1, elev.length),
+        sea: seaRadius(params),
+      }
+      publishStats()
     }
 
     const rebuild = (params) => {
@@ -370,7 +645,12 @@ export default function PlanetCanvas({ paramsRef, onStats }) {
         vertices: result.vertices,
         triangles: result.triangles,
         ms: Math.round(performance.now() - started),
+        heightMin: result.min,
+        heightMax: result.max,
+        mesh: params.planetMesh,
+        detail: detail,
       }
+      paintDebugLand(params)
       countLand(params)
     }
 
@@ -384,16 +664,22 @@ export default function PlanetCanvas({ paramsRef, onStats }) {
       }
       uniforms.uStepped.value = params.planetStepped ? 1 : 0
 
+      const debug = params.debug ?? {}
       const filled = params.showMesh !== false
-      ground.visible = filled
-      groundInk.visible = filled
-      wire.visible = !filled
+      const landOn = debug.land === true
+      ground.visible = filled && !landOn
+      debugLand.visible = landOn
+      groundInk.visible = filled && debug.hideInk !== true
+      wire.visible = !filled || debug.wire === true
+      wireMat.opacity = filled && debug.wire === true ? 0.32 : 0.45
+      sitePoints.visible = debug.sites === true
+      if (landOn) paintDebugLand(params)
 
-      ocean.visible = params.planetOcean !== false && filled
+      ocean.visible = params.planetOcean !== false && filled && debug.hideOcean !== true
       setOceanRes(params.planetOceanRes ?? 128)
       const radius = seaRadius(params)
       ocean.scale.setScalar(radius)
-      seaInk.visible = ocean.visible
+      seaInk.visible = ocean.visible && debug.hideInk !== true
       seaInk.scale.setScalar(radius + OUTLINE)
       const o = oceanUniforms
       o.uWaveScale.value = params.planetWaveScale ?? 24
@@ -429,18 +715,40 @@ export default function PlanetCanvas({ paramsRef, onStats }) {
     }
 
     const renderDepth = () => {
-      const keep = [ocean.visible, groundInk.visible, seaInk.visible, wire.visible]
+      const keep = [
+        ocean.visible,
+        groundInk.visible,
+        seaInk.visible,
+        wire.visible,
+        debugLand.visible,
+        sitePoints.visible,
+        probe.visible,
+        agentGizmo.visible,
+      ]
       ocean.visible = false
       groundInk.visible = false
       seaInk.visible = false
       wire.visible = false
+      debugLand.visible = false
+      sitePoints.visible = false
+      probe.visible = false
+      agentGizmo.visible = false
       scene.overrideMaterial = depthOnly
       renderer.setRenderTarget(depthTarget)
       renderer.clear()
       renderer.render(scene, camera)
       renderer.setRenderTarget(null)
       scene.overrideMaterial = null
-      ;[ocean.visible, groundInk.visible, seaInk.visible, wire.visible] = keep
+      ;[
+        ocean.visible,
+        groundInk.visible,
+        seaInk.visible,
+        wire.visible,
+        debugLand.visible,
+        sitePoints.visible,
+        probe.visible,
+        agentGizmo.visible,
+      ] = keep
     }
     resize()
     window.addEventListener('resize', resize)
@@ -464,57 +772,190 @@ export default function PlanetCanvas({ paramsRef, onStats }) {
       if (nextTownKey !== townKey && now - lastTown > TOWN_GAP_MS) {
         townKey = nextTownKey
         town.build(params, surface)
+        ufo.place(params, surface, town.sites.trees)
+        syncSitePoints()
         lastTown = performance.now()
+        publishStats()
       }
+      const talking = talkOpenRef?.current === true
       syncLook(params)
       uniforms.uRoadOn.value = params.planetRoads !== false ? 1 : 0
-      planet.rotation.y += dt * (params.planetSpin ?? 0.2) * 0.35
+      if (!talking) planet.rotation.y += dt * (params.planetSpin ?? 0.2) * 0.35
       planet.updateMatrixWorld()
+      agent.setTalking?.(talking)
       town.update(dt, params, surface)
-      agent.update(dt, params, surface, town.walls)
-      const follow = params.planetFollow ?? 'robot'
-      const target =
-        follow === 'robot' && agent.root.visible ? agent.root.getWorldPosition(followDir) : null
-      if (target && now > heldUntil) {
-        followDir.normalize()
-        camDir.copy(camera.position).normalize()
-        const side = camDir.addScaledVector(followDir, -camDir.dot(followDir))
-        const wantDir = followDir.clone()
-        if (side.lengthSq() > 1e-8) {
-          wantDir.multiplyScalar(Math.cos(0.38)).addScaledVector(side.normalize(), Math.sin(0.38))
+      if (params.debug?.hideTown) town.root.visible = false
+      ufo.update(dt, params)
+      agent.update(dt, params, surface, town)
+      town.syncCars(params, surface)
+      if (params.debug?.hideAgent) agent.root.visible = false
+      if (talking) {
+        if (!talkCam.on && agent.root.visible) lockTalkCamera()
+      } else {
+        if (talkCam.on) unlockTalkCamera()
+        const follow = params.planetFollow ?? 'robot'
+        const target =
+          follow === 'robot' && params.planetAgent !== false
+            ? agent.root.getWorldPosition(followDir)
+            : null
+        if (target && now > heldUntil) {
+          followDir.normalize()
+          camDir.copy(camera.position).normalize()
+          const side = camDir.addScaledVector(followDir, -camDir.dot(followDir))
+          const wantDir = followDir.clone()
+          if (side.lengthSq() > 1e-8) {
+            wantDir.multiplyScalar(Math.cos(0.38)).addScaledVector(side.normalize(), Math.sin(0.38))
+          }
+          const want = THREE.MathUtils.clamp(PLANET_RADIUS + 6.5, controls.minDistance, controls.maxDistance)
+          const distance = THREE.MathUtils.damp(camera.position.length(), want, 1.4, dt)
+          camDir.copy(camera.position).normalize()
+          camDir.lerp(wantDir, 1 - Math.exp(-dt * 1.5)).normalize()
+          camera.position.copy(camDir).multiplyScalar(distance)
         }
-        const want = THREE.MathUtils.clamp(PLANET_RADIUS + 6.5, controls.minDistance, controls.maxDistance)
-        const distance = THREE.MathUtils.damp(camera.position.length(), want, 1.4, dt)
-        camDir.copy(camera.position).normalize()
-        camDir.lerp(wantDir, 1 - Math.exp(-dt * 1.5)).normalize()
-        camera.position.copy(camDir).multiplyScalar(distance)
       }
+      camera.updateMatrixWorld()
+      syncAgentDebug(params)
       oceanUniforms.uPhase.value += dt * (params.planetWaveSpeed ?? 1)
 
-      controls.update()
+      if (!talking) controls.update()
       const needDepth =
         ocean.visible && (params.planetFoamOn !== false || params.planetRipplesOn !== false)
       oceanUniforms.uUseDepth.value = needDepth ? 1 : 0
       if (needDepth) renderDepth()
+
+      const debugOpen = debugOpenRef?.current === true
+      if (debugOpen && pointer.x <= 1) {
+        raycaster.setFromCamera(pointer, camera)
+        const target = ground.visible ? ground : debugLand.visible ? debugLand : wire
+        const hit = raycaster.intersectObject(target, false)[0]
+        if (hit) {
+          planet.worldToLocal(localHit.copy(hit.point))
+          const radius = localHit.length()
+          const sea = seaRadius(params)
+          const dirY = localHit.y / Math.max(radius, 1e-6)
+          const lat = Math.asin(THREE.MathUtils.clamp(dirY, -1, 1)) * (180 / Math.PI)
+          const lon = Math.atan2(localHit.z, localHit.x) * (180 / Math.PI)
+          let elev = null
+          const aElev = groundGeom.attributes.aElev
+          if (aElev && hit.face) {
+            const bc = hit.barycoord
+            const ea = aElev.getX(hit.face.a)
+            const eb = aElev.getX(hit.face.b)
+            const ec = aElev.getX(hit.face.c)
+            elev = bc ? ea * bc.x + eb * bc.y + ec * bc.z : (ea + eb + ec) / 3
+          }
+          const delta = radius - sea
+          hover = {
+            lat,
+            lon,
+            radius,
+            sea,
+            delta,
+            elev,
+            zone: delta < 0 ? 'water' : delta < SHORE_CLEAR ? 'shore' : 'land',
+          }
+          probe.position.copy(localHit)
+          probe.visible = true
+        } else {
+          hover = null
+          probe.visible = false
+        }
+      } else {
+        hover = null
+        probe.visible = false
+      }
+      const hoverKey = hover
+        ? `${hover.zone}|${hover.lat.toFixed(1)}|${hover.lon.toFixed(1)}|${hover.delta.toFixed(2)}`
+        : debugOpen
+          ? 'none'
+          : ''
+      const agentKey = agentInfo
+        ? `${agentInfo.moving ? 1 : 0}|${agentInfo.stuck}|${agentInfo.place}|${agentInfo.zone}|${agentInfo.lat.toFixed(1)}|${agentInfo.lon.toFixed(1)}|${agentInfo.lookAnchors?.head?.left?.y ?? 0}|${agentInfo.lookAnchors?.feet?.left?.y ?? 0}`
+        : ''
+      if (hoverKey !== lastHoverKey || agentKey !== lastAgentKey) {
+        lastHoverKey = hoverKey
+        lastAgentKey = agentKey
+        publishStats()
+      }
+
       renderer.render(scene, camera)
       frameId = requestAnimationFrame(animate)
     }
     animate()
 
+    const onPointerMove = (event) => {
+      const rect = renderer.domElement.getBoundingClientRect()
+      pointer.x = ((event.clientX - rect.left) / Math.max(rect.width, 1)) * 2 - 1
+      pointer.y = -((event.clientY - rect.top) / Math.max(rect.height, 1)) * 2 + 1
+      if (agent.root.visible) {
+        raycaster.setFromCamera(pointer, camera)
+        renderer.domElement.style.cursor = raycaster.intersectObject(agent.root, true).length
+          ? 'pointer'
+          : ''
+      } else {
+        renderer.domElement.style.cursor = ''
+      }
+    }
+    const onPointerLeave = () => {
+      pointer.set(2, 2)
+      renderer.domElement.style.cursor = ''
+    }
+    let press = null
+    const onPointerDown = (event) => {
+      if (event.button !== 0) return
+      press = { x: event.clientX, y: event.clientY, t: performance.now() }
+    }
+    const onPointerUp = (event) => {
+      if (!press || event.button !== 0) return
+      const moved = Math.hypot(event.clientX - press.x, event.clientY - press.y)
+      const held = performance.now() - press.t
+      press = null
+      if (moved > 8 || held > 450) return
+      const rect = renderer.domElement.getBoundingClientRect()
+      pointer.x = ((event.clientX - rect.left) / Math.max(rect.width, 1)) * 2 - 1
+      pointer.y = -((event.clientY - rect.top) / Math.max(rect.height, 1)) * 2 + 1
+      raycaster.setFromCamera(pointer, camera)
+      const overAgent = agent.root.visible && raycaster.intersectObject(agent.root, true).length > 0
+      if (overAgent) onTalkRef.current?.(true)
+      else if (talkOpenRef?.current) onTalkRef.current?.(false)
+    }
+    renderer.domElement.addEventListener('pointermove', onPointerMove)
+    renderer.domElement.addEventListener('pointerleave', onPointerLeave)
+    renderer.domElement.addEventListener('pointerdown', onPointerDown)
+    renderer.domElement.addEventListener('pointerup', onPointerUp)
+
     return () => {
       cancelAnimationFrame(frameId)
       window.removeEventListener('resize', resize)
+      renderer.domElement.removeEventListener('pointermove', onPointerMove)
+      renderer.domElement.removeEventListener('pointerleave', onPointerLeave)
+      renderer.domElement.removeEventListener('pointerdown', onPointerDown)
+      renderer.domElement.removeEventListener('pointerup', onPointerUp)
+      renderer.domElement.style.cursor = ''
       controls.dispose()
       unit?.dispose()
       groundGeom.dispose()
       groundMat.dispose()
       wireMat.dispose()
+      debugGeom.dispose()
+      debugLandMat.dispose()
+      siteGeom.dispose()
+      siteMat.dispose()
+      probe.geometry.dispose()
+      probe.material.dispose()
+      agentCap.geometry.dispose()
+      agentCapMat.dispose()
+      agentLook.geometry.dispose()
+      agentLookMat.dispose()
+      agentTip.geometry.dispose()
+      agentTipMat.dispose()
       oceanGeom?.dispose()
       oceanMat.dispose()
       depthTarget.depthTexture.dispose()
       depthTarget.dispose()
       depthOnly.dispose()
       agent.dispose()
+      ufo.dispose()
       town.dispose()
       groundInkMat.dispose()
       seaInkGeom.dispose()
@@ -525,7 +966,7 @@ export default function PlanetCanvas({ paramsRef, onStats }) {
         mount.removeChild(renderer.domElement)
       }
     }
-  }, [paramsRef])
+  }, [paramsRef, debugOpenRef, talkOpenRef])
 
   return <div className="galaxy-canvas" ref={mountRef} />
 }

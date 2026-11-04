@@ -113,6 +113,12 @@ const side = new THREE.Vector3()
 const basis = new THREE.Matrix4()
 const targetQuat = new THREE.Quaternion()
 const wallOffset = new THREE.Vector3()
+const bodySide = new THREE.Vector3()
+const slideDir = new THREE.Vector3()
+const carPrev = new THREE.Vector3()
+const lookDir = new THREE.Vector3()
+const lookHeading = new THREE.Vector3()
+const DETOUR_YAWS = [0.55, -0.55, 1.05, -1.05, 1.6, -1.6, 2.35, -2.35, Math.PI]
 
 /** Capsule radius as a fraction of character height, matching Messenger. */
 const CAPSULE_RATIO = 0.2
@@ -170,6 +176,214 @@ export function resolveWalls(dir, walls, radius = 0.1) {
 }
 
 /**
+ * Circle vs circle on the tangent plane. Tree trunks are posts: the capsule
+ * cannot walk through them.
+ */
+export function resolveTrunks(dir, trunks, radius = 0.1) {
+  if (!trunks?.length) return false
+  const reach = Math.cos(1.4 / PLANET_RADIUS)
+  let hit = false
+  for (let iter = 0; iter < 3; iter++) {
+    let moved = false
+    for (const trunk of trunks) {
+      if (dir.dot(trunk.dir) < reach) continue
+      wallOffset.copy(dir).addScaledVector(trunk.dir, -dir.dot(trunk.dir))
+      const dist = wallOffset.length() * PLANET_RADIUS
+      const min = trunk.radius + radius
+      if (dist >= min) continue
+      if (dist < 1e-5) {
+        wallOffset.set(0, 1, 0).cross(trunk.dir)
+        if (wallOffset.lengthSq() < 1e-8) wallOffset.set(1, 0, 0).cross(trunk.dir)
+      }
+      wallOffset.normalize()
+      dir.addScaledVector(wallOffset, (min - dist) / PLANET_RADIUS)
+      dir.normalize()
+      moved = true
+      hit = true
+    }
+    if (!moved) break
+  }
+  return hit
+}
+
+function wallOverlaps(dir, wall, radius) {
+  if (dir.dot(wall.dir) < Math.cos(2.6 / PLANET_RADIUS)) return false
+  wallOffset.copy(dir).addScaledVector(wall.dir, -dir.dot(wall.dir))
+  const x = wallOffset.dot(wall.side) * PLANET_RADIUS
+  const z = wallOffset.dot(wall.forward) * PLANET_RADIUS
+  if (Math.abs(x) > wall.halfX + radius + 0.08 || Math.abs(z) > wall.halfZ + radius + 0.08) return false
+  const dx = x - THREE.MathUtils.clamp(x, -wall.halfX, wall.halfX)
+  const dz = z - THREE.MathUtils.clamp(z, -wall.halfZ, wall.halfZ)
+  return dx * dx + dz * dz < radius * radius
+}
+
+function trunkOverlaps(dir, trunk, radius) {
+  if (dir.dot(trunk.dir) < Math.cos(1.4 / PLANET_RADIUS)) return false
+  wallOffset.copy(dir).addScaledVector(trunk.dir, -dir.dot(trunk.dir))
+  const min = trunk.radius + radius
+  return wallOffset.length() * PLANET_RADIUS < min
+}
+
+function carOverlaps(dir, car, radius) {
+  if (!car.dir || dir.dot(car.dir) < Math.cos(1.6 / PLANET_RADIUS)) return false
+  const carSide = carAxes(car)
+  wallOffset.copy(dir).addScaledVector(car.dir, -dir.dot(car.dir))
+  const x = wallOffset.dot(carSide) * PLANET_RADIUS
+  const z = wallOffset.dot(car.forward) * PLANET_RADIUS
+  const halfX = car.halfX ?? 0.16
+  const halfZ = car.halfZ ?? 0.28
+  if (Math.abs(x) > halfX + radius + 0.1 || Math.abs(z) > halfZ + radius + 0.1) return false
+  const dx = x - THREE.MathUtils.clamp(x, -halfX, halfX)
+  const dz = z - THREE.MathUtils.clamp(z, -halfZ, halfZ)
+  return dx * dx + dz * dz < radius * radius
+}
+
+/** True if this unit direction already sits inside a house, trunk, or car. Does not shove. */
+export function blockedAt(dir, collision, radius = 0.1) {
+  if (!collision) return false
+  if (collision.walls?.length) {
+    for (const wall of collision.walls) if (wallOverlaps(dir, wall, radius)) return true
+  }
+  if (collision.trunks?.length) {
+    for (const trunk of collision.trunks) if (trunkOverlaps(dir, trunk, radius)) return true
+  }
+  if (collision.cars?.length) {
+    for (const car of collision.cars) if (carOverlaps(dir, car, radius)) return true
+  }
+  return false
+}
+
+function alongHeading(from, heading, dist) {
+  const ang = dist / PLANET_RADIUS
+  return lookDir.copy(from).multiplyScalar(Math.cos(ang)).addScaledVector(heading, Math.sin(ang)).normalize()
+}
+
+function headingClear(from, heading, collision, cap) {
+  lookHeading.copy(heading).addScaledVector(from, -heading.dot(from))
+  if (lookHeading.lengthSq() < 1e-8) return false
+  lookHeading.normalize()
+  const pad = cap * 1.12
+  return (
+    !blockedAt(alongHeading(from, lookHeading, 0.38), collision, pad) &&
+    !blockedAt(alongHeading(from, lookHeading, 0.82), collision, pad)
+  )
+}
+
+function resolveContacts(at, collision, cap, carSpeed = 0) {
+  let hit = false
+  if (collision?.walls?.length) hit = resolveWalls(at, collision.walls, cap) || hit
+  if (collision?.trunks?.length) hit = resolveTrunks(at, collision.trunks, cap) || hit
+  if (collision?.cars?.length) hit = resolveCars(at, collision.cars, cap, { speed: carSpeed }) || hit
+  return hit
+}
+
+function carAxes(car) {
+  if (car.side) {
+    car.side.crossVectors(car.dir, car.forward)
+    if (car.side.lengthSq() < 1e-10) car.side.set(0, 1, 0).cross(car.dir)
+    car.side.normalize()
+    return car.side
+  }
+  bodySide.crossVectors(car.dir, car.forward)
+  if (bodySide.lengthSq() < 1e-10) bodySide.set(0, 1, 0).cross(car.dir)
+  return bodySide.normalize()
+}
+
+/**
+ * Capsule vs car box. The robot is pushed out. The car is shoved along the
+ * hit and stunned, so it either sits still or slides off the road.
+ */
+export function resolveCars(dir, cars, radius = 0.1, opts = {}) {
+  if (!cars?.length) return false
+  const speed = opts.speed ?? 0
+  const reach = Math.cos(1.6 / PLANET_RADIUS)
+  let hit = false
+  for (let iter = 0; iter < 2; iter++) {
+    let moved = false
+    for (const car of cars) {
+      if (!car.dir) continue
+      if (dir.dot(car.dir) < reach) continue
+      const carSide = carAxes(car)
+      wallOffset.copy(dir).addScaledVector(car.dir, -dir.dot(car.dir))
+      const x = wallOffset.dot(carSide) * PLANET_RADIUS
+      const z = wallOffset.dot(car.forward) * PLANET_RADIUS
+      const halfX = car.halfX ?? 0.16
+      const halfZ = car.halfZ ?? 0.28
+      if (Math.abs(x) > halfX + radius + 0.1 || Math.abs(z) > halfZ + radius + 0.1) continue
+
+      const cx = THREE.MathUtils.clamp(x, -halfX, halfX)
+      const cz = THREE.MathUtils.clamp(z, -halfZ, halfZ)
+      const dx = x - cx
+      const dz = z - cz
+      const distSq = dx * dx + dz * dz
+      let pushX = 0
+      let pushZ = 0
+      if (distSq < 1e-12) {
+        const roomX = halfX - Math.abs(x)
+        const roomZ = halfZ - Math.abs(z)
+        if (roomX < roomZ) pushX = Math.sign(x || 1) * (halfX + radius) - x
+        else pushZ = Math.sign(z || 1) * (halfZ + radius) - z
+      } else {
+        const dist = Math.sqrt(distSq)
+        if (dist >= radius) continue
+        const grow = (radius - dist) / dist
+        pushX = dx * grow
+        pushZ = dz * grow
+      }
+      dir.addScaledVector(carSide, pushX / PLANET_RADIUS)
+      dir.addScaledVector(car.forward, pushZ / PLANET_RADIUS)
+      dir.normalize()
+
+      const incoming = (car.stun ?? 0) <= 0 && !car.offRoad
+      const impact = speed > 0.2 || incoming
+      const shove = impact ? 1.15 + speed * 0.35 : 0.45
+      car.dir.addScaledVector(carSide, (-pushX * shove) / PLANET_RADIUS)
+      car.dir.addScaledVector(car.forward, (-pushZ * shove) / PLANET_RADIUS)
+      car.dir.normalize()
+      if (impact) {
+        if (!car.slide) car.slide = new THREE.Vector3()
+        const impulse = speed > 0.2 ? Math.max(1.2, speed * 1.7) : Math.max(0.9, car.speed ?? 1.2)
+        car.slide.addScaledVector(carSide, -Math.sign(pushX || dx || 1) * impulse * 0.55)
+        car.slide.addScaledVector(car.forward, -Math.sign(pushZ || dz || 1) * impulse * 0.7)
+        car.stun = Math.max(car.stun ?? 0, speed > 1.6 ? 1.0 : 2.4)
+        car.offRoad = true
+      }
+      moved = true
+      hit = true
+    }
+    if (!moved) break
+  }
+  return hit
+}
+
+/** Slide a car along the sphere. Water bounces it back. */
+export function slideOnPlanet(car, dt, params, surface) {
+  if (!car.slide || car.slide.lengthSq() < 2e-3) {
+    car.slide?.set(0, 0, 0)
+    return false
+  }
+  slideDir.copy(car.slide).addScaledVector(car.dir, -car.slide.dot(car.dir))
+  if (slideDir.lengthSq() < 1e-6) {
+    car.slide.set(0, 0, 0)
+    return false
+  }
+  slideDir.normalize()
+  const step = car.slide.length() * dt
+  const angle = step / PLANET_RADIUS
+  carPrev.copy(car.dir)
+  car.dir.multiplyScalar(Math.cos(angle)).addScaledVector(slideDir, Math.sin(angle)).normalize()
+  if (isWater(car.dir, params, surface, 0.08)) {
+    car.dir.copy(carPrev)
+    car.slide.multiplyScalar(-0.25)
+    return true
+  }
+  car.forward.copy(slideDir)
+  car.slide.multiplyScalar(Math.exp(-dt * 2.6))
+  car.slide.addScaledVector(car.dir, -car.slide.dot(car.dir))
+  return true
+}
+
+/**
  * A point that wanders over the planet: unit direction `dir`, tangent heading `forward`.
  * Positions are in the planet group's local space. Feet follow the ground mesh, including
  * the seabed, so walking into the ocean wades rather than floating.
@@ -181,6 +395,40 @@ export function createWalker() {
   const probe = new THREE.Vector3()
   let turnRate = 0
   let placed = false
+  let steerHold = 0
+  let steerSign = 1
+  let stuck = 0
+
+  const pickDetour = (collision, cap) => {
+    if (stuck > 10) return steerSign * Math.PI * 0.85
+    const prefer = Math.sign(steerSign || turnRate || 1)
+    const order = DETOUR_YAWS.slice().sort((a, b) => {
+      const as = Math.sign(a) === prefer || a === 0 ? 0 : 1
+      const bs = Math.sign(b) === prefer || b === 0 ? 0 : 1
+      if (as !== bs) return as - bs
+      return Math.abs(a) - Math.abs(b)
+    })
+    for (const yaw of order) {
+      lookHeading.copy(forward).applyAxisAngle(dir, yaw)
+      if (headingClear(dir, lookHeading, collision, cap)) return yaw
+    }
+    return prefer * 1.45
+  }
+
+  const takeStep = (distance, collision, cap, carSpeed) => {
+    const radius = PLANET_RADIUS + 0.5
+    const ang = distance / radius
+    prev.copy(dir)
+    dir.multiplyScalar(Math.cos(ang)).addScaledVector(forward, Math.sin(ang)).normalize()
+    forward.multiplyScalar(Math.cos(ang)).addScaledVector(prev, -Math.sin(ang))
+    const hit = resolveContacts(dir, collision, cap, carSpeed)
+    if (hit) {
+      dir.copy(prev)
+      resolveContacts(dir, collision, cap, 0)
+    }
+    forward.addScaledVector(dir, -forward.dot(dir)).normalize()
+    return hit
+  }
 
   const spawn = (params, surface) => {
     let best = null
@@ -205,41 +453,65 @@ export function createWalker() {
   }
 
   /**
-   * Moves `distance` world units along the heading. Water is enterable; house walls
-   * push the capsule out. `collision` is `{ walls, capsuleRadius }` from the town.
+   * Moves `distance` world units along the heading. Water is enterable. Houses,
+   * tree trunks, and cars push the capsule out. If the way is blocked, the walker
+   * picks another heading and keeps going. `collision` is
+   * `{ walls, trunks, cars, capsuleRadius, speed }` from the town.
    */
   const step = (dt, distance, params, wander = 1, collision) => {
     if (!placed) spawn(params)
-    const radius = PLANET_RADIUS + 0.5
+    const cap = collision?.capsuleRadius ?? 0.1
+    const carSpeed = collision?.speed ?? 0
 
-    turnRate += (Math.random() - 0.5) * dt * 3 * wander
-    turnRate = THREE.MathUtils.clamp(turnRate * (1 - dt * 0.4), -0.9, 0.9)
-    forward.applyAxisAngle(dir, turnRate * dt)
-
-    const angle = distance / radius
-    prev.copy(dir)
-    dir.multiplyScalar(Math.cos(angle)).addScaledVector(forward, Math.sin(angle)).normalize()
-    forward.multiplyScalar(Math.cos(angle)).addScaledVector(prev, -Math.sin(angle))
-
-    const walls = collision?.walls
-    const blocked = walls?.length
-      ? resolveWalls(dir, walls, collision.capsuleRadius ?? 0.1)
-      : false
-    if (blocked && dir.angleTo(prev) * radius < distance * 0.4) {
-      const sign = Math.sign(turnRate || 1)
-      forward.applyAxisAngle(dir, sign * 3 * dt)
-      turnRate = sign * 0.9
+    if (steerHold > 0) steerHold -= dt
+    if (steerHold > 0) {
+      turnRate = THREE.MathUtils.damp(turnRate, steerSign * 0.25, 6, dt)
+    } else {
+      turnRate += (Math.random() - 0.5) * dt * 3 * wander
+      turnRate = THREE.MathUtils.clamp(turnRate * (1 - dt * 0.4), -0.9, 0.9)
     }
+    forward.applyAxisAngle(dir, turnRate * dt)
     forward.addScaledVector(dir, -forward.dot(dir)).normalize()
+
+    let detoured = false
+    const aheadBlocked = !headingClear(dir, forward, collision, cap)
+    if (aheadBlocked && steerHold <= 0) {
+      const yaw = pickDetour(collision, cap)
+      forward.applyAxisAngle(dir, yaw)
+      forward.addScaledVector(dir, -forward.dot(dir)).normalize()
+      steerSign = Math.sign(yaw) || steerSign
+      turnRate = steerSign * 0.9
+      steerHold = 0.7 + Math.random() * 0.45
+      detoured = true
+    }
+
+    let blocked = takeStep(distance, collision, cap, carSpeed)
+    if (blocked) {
+      stuck += 1
+      if (!detoured) {
+        const yaw = pickDetour(collision, cap)
+        forward.applyAxisAngle(dir, yaw)
+        forward.addScaledVector(dir, -forward.dot(dir)).normalize()
+        steerSign = Math.sign(yaw) || steerSign
+        turnRate = steerSign * 1.15
+        steerHold = 0.85 + Math.random() * 0.4
+      }
+      takeStep(distance * 0.6, collision, cap, 0)
+    } else {
+      stuck = Math.max(0, stuck - 2)
+    }
+    return { blocked, stuck }
   }
 
   /** Stands `object` on the ground mesh at `dir`, feet down, facing `forward` (+Z of the object). */
   const place = (object, dt, params, surface, collision) => {
     if (!placed) spawn(params, surface)
-    if (collision?.walls?.length) {
-      resolveWalls(dir, collision.walls, collision.capsuleRadius ?? 0.1)
-      forward.addScaledVector(dir, -forward.dot(dir)).normalize()
-    }
+    const cap = collision?.capsuleRadius ?? 0.1
+    let pushed = false
+    if (collision?.walls?.length) pushed = resolveWalls(dir, collision.walls, cap) || pushed
+    if (collision?.trunks?.length) pushed = resolveTrunks(dir, collision.trunks, cap) || pushed
+    if (collision?.cars?.length) pushed = resolveCars(dir, collision.cars, cap, { speed: 0 }) || pushed
+    if (pushed) forward.addScaledVector(dir, -forward.dot(dir)).normalize()
     object.position.copy(dir).multiplyScalar(groundRadius(dir, params, surface))
     side.crossVectors(dir, forward)
     basis.makeBasis(side, dir, forward)
@@ -254,5 +526,17 @@ export function createWalker() {
     placed = true
   }
 
-  return { dir, forward, step, place, start, reset: () => (placed = false) }
+  return {
+    dir,
+    forward,
+    step,
+    place,
+    start,
+    debugState: () => ({ stuck, steerHold }),
+    reset: () => {
+      placed = false
+      steerHold = 0
+      stuck = 0
+    },
+  }
 }

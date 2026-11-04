@@ -13,9 +13,17 @@ import {
   PLANET_MAPPINGS,
   PLANET_MESHES,
   createColorStops,
+  createDebugParams,
   createOceanParams,
 } from './planet.js'
-import { AGENT_MODES, FOLLOW_MODES, createAgentParams } from './planetAgent.js'
+import {
+  AGENT_MODES,
+  FOLLOW_MODES,
+  LOOK_SLOTS,
+  LOOK_SWATCHES,
+  createAgentParams,
+  defaultAgentLook,
+} from './planetAgent.js'
 import { MAX_CARS, createTownParams } from './planetTown.js'
 import { db } from './firebase.js'
 
@@ -37,6 +45,16 @@ const AGENT_RANGES = {
   planetTownSeed: [1, 9999],
 }
 
+function restoreLook(value) {
+  const out = defaultAgentLook()
+  if (!value || typeof value !== 'object') return out
+  const last = LOOK_SWATCHES.length - 1
+  for (const slot of LOOK_SLOTS) {
+    out[slot.id] = Math.round(num(value[slot.id], 0, 0, last))
+  }
+  return out
+}
+
 function restoreAgent(source) {
   const out = {
     planetAgent: source.planetAgent !== false,
@@ -45,6 +63,7 @@ function restoreAgent(source) {
     planetAgentMode: oneOf(source.planetAgentMode, AGENT_MODE_IDS, AGENT_DEFAULTS.planetAgentMode),
     planetAgentEmote: null,
     planetRoads: source.planetRoads !== false,
+    planetAgentLook: restoreLook(source.planetAgentLook),
   }
   for (const [key, range] of Object.entries(AGENT_RANGES)) {
     out[key] = num(source[key], AGENT_DEFAULTS[key], ...range)
@@ -169,6 +188,7 @@ export function snapshotParams(params) {
       planetAgentAuto: params.planetAgentAuto !== false,
       planetFollow: params.planetFollow,
       planetAgentMode: params.planetAgentMode,
+      planetAgentLook: params.planetAgentLook ?? defaultAgentLook(),
       planetRoads: params.planetRoads !== false,
       ...Object.fromEntries(Object.keys(AGENT_RANGES).map((key) => [key, params[key]])),
       planetSpin: params.planetSpin,
@@ -226,6 +246,7 @@ export function restoreParams(saved, base) {
     planetSpin: num(source.planetSpin, base.planetSpin ?? 0.2, 0, 1),
     planetStepped: source.planetStepped === true,
     planetStops: restoreStops(source.planetStops, base.planetStops),
+    debug: { ...createDebugParams(), ...(base.debug ?? {}) },
     layers: rawLayers.slice(0, MAX_NOISE_LAYERS).map((layer) => createNoiseLayer(layer)),
     csgSolids: rawSolids.slice(0, MAX_CSG_SOLIDS).map((solid) => createSolid(solid)),
   }

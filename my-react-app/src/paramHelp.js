@@ -143,12 +143,15 @@ export const PARAM_HELP = {
     'How tightly houses cluster around each town and line the roads. A house only plants if its whole footprint is dry land, so nothing stands in the lake. Walls block the robot. 0 removes them.',
   planetLamps: 'Street lamp spacing. They alternate sides of the road. 0 removes them.',
   planetTrees:
-    'How many trees grow on land away from the roads and houses. They sit on the same mesh the ground is made of, not on a separate layer.',
-  planetCars: 'How many cars drive the roads. At each town they pick a new road at random.',
+    'How many trees grow on land away from the roads and houses. Trunks are solid: the robot stops if it walks into one.',
+  planetCars:
+    'How many cars drive the roads. At each town they pick a new road at random. A hit from the robot stops a car or knocks it off the asphalt.',
+  planetAgentLook:
+    'Messenger clothes: left and right arrows cycle head, body, legs, and feet. Each slot is a toon color, not a new mesh. The factory look is the stock robot.',
   planetAgentSize:
     'Height of the robot in world units. Default 0.5 is about 5% of the planet radius, so houses and trees stand taller than the person, as on Messenger.',
   planetAgentSpeed:
-    'Walking pace in world units per second. Run multiplies it. House walls block the capsule; water is entered by standing on the seabed, so the robot wades instead of floating.',
+    'Walking pace in world units per second. Run multiplies it. House walls and tree trunks stop the capsule. Cars stop or get pushed. Water is entered by standing on the seabed, so the robot wades instead of floating.',
   planetDetail:
     'Mesh resolution. On UV rings it is the segment count around the planet and from pole to pole. On Cube it is the cell count along each face. Higher detail shows finer coastlines and ridges but takes longer to rebuild.',
   planetStop:
