@@ -194,12 +194,22 @@ diffuseColor.a = mix(uOpacity, 1.0, foamMask);`,
   return material
 }
 
-export default function PlanetCanvas({ paramsRef, debugOpenRef, talkOpenRef, onTalk, onStats }) {
+export default function PlanetCanvas({
+  paramsRef,
+  debugOpenRef,
+  talkOpenRef,
+  ufoOpenRef,
+  onTalk,
+  onUfo,
+  onStats,
+}) {
   const mountRef = useRef(null)
   const onStatsRef = useRef(onStats)
   const onTalkRef = useRef(onTalk)
+  const onUfoRef = useRef(onUfo)
   onStatsRef.current = onStats
   onTalkRef.current = onTalk
+  onUfoRef.current = onUfo
 
   useEffect(() => {
     const mount = mountRef.current
@@ -244,15 +254,21 @@ export default function PlanetCanvas({ paramsRef, debugOpenRef, talkOpenRef, onT
     ]
     const talkCam = {
       on: false,
+      kind: null,
       pos: new THREE.Vector3(),
       up: new THREE.Vector3(),
       target: new THREE.Vector3(),
     }
 
-    const lockTalkCamera = () => {
+    const saveTalkCamera = () => {
+      if (talkCam.on) return
       talkCam.pos.copy(camera.position)
       talkCam.up.copy(camera.up)
       talkCam.target.copy(controls.target)
+    }
+
+    const lockTalkCamera = () => {
+      saveTalkCamera()
       const info = agent.getCollision()
       agent.root.getWorldPosition(talkLook)
       talkUp.copy(info.dir).transformDirection(planet.matrixWorld).normalize()
@@ -268,6 +284,34 @@ export default function PlanetCanvas({ paramsRef, debugOpenRef, talkOpenRef, onT
       controls.target.copy(talkLook)
       controls.enabled = false
       talkCam.on = true
+      talkCam.kind = 'agent'
+    }
+
+    const lockUfoCamera = () => {
+      saveTalkCamera()
+      ufo.root.getWorldPosition(talkLook)
+      talkUp.copy(ufo.dir).transformDirection(planet.matrixWorld)
+      if (talkUp.lengthSq() < 1e-6) talkUp.copy(talkLook)
+      talkUp.normalize()
+      talkFwd.copy(camera.position).sub(talkLook)
+      talkFwd.addScaledVector(talkUp, -talkFwd.dot(talkUp))
+      if (talkFwd.lengthSq() < 1e-6) {
+        talkFwd.set(0, 1, 0).cross(talkUp)
+        if (talkFwd.lengthSq() < 1e-6) talkFwd.set(1, 0, 0)
+      }
+      talkFwd.normalize()
+      const size = 1.4
+      camera.up.copy(talkUp)
+      camera.position
+        .copy(talkLook)
+        .addScaledVector(talkFwd, Math.max(2.8, size * 2.2))
+        .addScaledVector(talkUp, size * 0.18)
+      camera.lookAt(talkLook)
+      controls.target.copy(talkLook)
+      controls.enabled = false
+      talkCam.on = true
+      talkCam.kind = 'ufo'
+      ufo.ping?.()
     }
 
     const unlockTalkCamera = () => {
@@ -276,6 +320,7 @@ export default function PlanetCanvas({ paramsRef, debugOpenRef, talkOpenRef, onT
       controls.target.copy(talkCam.target)
       controls.enabled = true
       talkCam.on = false
+      talkCam.kind = null
       heldUntil = performance.now() + 1600
     }
 
@@ -778,9 +823,11 @@ export default function PlanetCanvas({ paramsRef, debugOpenRef, talkOpenRef, onT
         publishStats()
       }
       const talking = talkOpenRef?.current === true
+      const ufoFocus = ufoOpenRef?.current === true
+      const freezeCam = talking || ufoFocus
       syncLook(params)
       uniforms.uRoadOn.value = params.planetRoads !== false ? 1 : 0
-      if (!talking) planet.rotation.y += dt * (params.planetSpin ?? 0.2) * 0.35
+      if (!freezeCam) planet.rotation.y += dt * (params.planetSpin ?? 0.2) * 0.35
       planet.updateMatrixWorld()
       agent.setTalking?.(talking)
       town.update(dt, params, surface)
@@ -789,8 +836,12 @@ export default function PlanetCanvas({ paramsRef, debugOpenRef, talkOpenRef, onT
       agent.update(dt, params, surface, town)
       town.syncCars(params, surface)
       if (params.debug?.hideAgent) agent.root.visible = false
-      if (talking) {
-        if (!talkCam.on && agent.root.visible) lockTalkCamera()
+      if (freezeCam) {
+        const want = ufoFocus ? 'ufo' : 'agent'
+        if (!talkCam.on || talkCam.kind !== want) {
+          if (want === 'ufo' && ufo.root.visible) lockUfoCamera()
+          else if (want === 'agent' && agent.root.visible) lockTalkCamera()
+        }
       } else {
         if (talkCam.on) unlockTalkCamera()
         const follow = params.planetFollow ?? 'robot'
@@ -817,7 +868,7 @@ export default function PlanetCanvas({ paramsRef, debugOpenRef, talkOpenRef, onT
       syncAgentDebug(params)
       oceanUniforms.uPhase.value += dt * (params.planetWaveSpeed ?? 1)
 
-      if (!talking) controls.update()
+      if (!freezeCam) controls.update()
       const needDepth =
         ocean.visible && (params.planetFoamOn !== false || params.planetRipplesOn !== false)
       oceanUniforms.uUseDepth.value = needDepth ? 1 : 0
@@ -887,14 +938,10 @@ export default function PlanetCanvas({ paramsRef, debugOpenRef, talkOpenRef, onT
       const rect = renderer.domElement.getBoundingClientRect()
       pointer.x = ((event.clientX - rect.left) / Math.max(rect.width, 1)) * 2 - 1
       pointer.y = -((event.clientY - rect.top) / Math.max(rect.height, 1)) * 2 + 1
-      if (agent.root.visible) {
-        raycaster.setFromCamera(pointer, camera)
-        renderer.domElement.style.cursor = raycaster.intersectObject(agent.root, true).length
-          ? 'pointer'
-          : ''
-      } else {
-        renderer.domElement.style.cursor = ''
-      }
+      raycaster.setFromCamera(pointer, camera)
+      const overAgent = agent.root.visible && raycaster.intersectObject(agent.root, true).length > 0
+      const overUfo = ufo.root.visible && raycaster.intersectObject(ufo.root, true).length > 0
+      renderer.domElement.style.cursor = overAgent || overUfo ? 'pointer' : ''
     }
     const onPointerLeave = () => {
       pointer.set(2, 2)
@@ -916,8 +963,13 @@ export default function PlanetCanvas({ paramsRef, debugOpenRef, talkOpenRef, onT
       pointer.y = -((event.clientY - rect.top) / Math.max(rect.height, 1)) * 2 + 1
       raycaster.setFromCamera(pointer, camera)
       const overAgent = agent.root.visible && raycaster.intersectObject(agent.root, true).length > 0
+      const overUfo = ufo.root.visible && raycaster.intersectObject(ufo.root, true).length > 0
       if (overAgent) onTalkRef.current?.(true)
-      else if (talkOpenRef?.current) onTalkRef.current?.(false)
+      else if (overUfo) onUfoRef.current?.(true)
+      else {
+        if (talkOpenRef?.current) onTalkRef.current?.(false)
+        if (ufoOpenRef?.current) onUfoRef.current?.(false)
+      }
     }
     renderer.domElement.addEventListener('pointermove', onPointerMove)
     renderer.domElement.addEventListener('pointerleave', onPointerLeave)
@@ -966,7 +1018,7 @@ export default function PlanetCanvas({ paramsRef, debugOpenRef, talkOpenRef, onT
         mount.removeChild(renderer.domElement)
       }
     }
-  }, [paramsRef, debugOpenRef, talkOpenRef])
+  }, [paramsRef, debugOpenRef, talkOpenRef, ufoOpenRef])
 
   return <div className="galaxy-canvas" ref={mountRef} />
 }

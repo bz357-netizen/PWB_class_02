@@ -34,17 +34,150 @@ export const LOOK_SLOTS = [
   { id: 'feet', label: 'Feet' },
 ]
 
-/** Toy palettes. Index 0 is the stock RobotExpressive paint. `eyes` is the cartoon pupil set. */
+/** Toy palettes. Index 0 is the stock RobotExpressive paint. `eyes` follows the head. */
 export const LOOK_SWATCHES = [
   { id: 'factory', label: 'Factory', main: '#c26a0a', trim: '#5f5e55', ink: '#0c0c0c', eyes: 'stock' },
-  { id: 'cream', label: 'Cream', main: '#f3ead3', trim: '#7b8486', ink: '#1e2b2b', eyes: 'glance' },
-  { id: 'sun', label: 'Sun', main: '#e9b44c', trim: '#5f5e55', ink: '#1e2b2b', eyes: 'target' },
-  { id: 'roof', label: 'Roof', main: '#e07a5f', trim: '#f7f3e8', ink: '#1e2b2b', eyes: 'googly' },
+  { id: 'cream', label: 'Cream', main: '#f3ead3', trim: '#7b8486', ink: '#1e2b2b', eyes: 'googly' },
+  { id: 'sun', label: 'Sun', main: '#e9b44c', trim: '#5f5e55', ink: '#1e2b2b', eyes: 'rings' },
+  { id: 'roof', label: 'Roof', main: '#e07a5f', trim: '#f7f3e8', ink: '#1e2b2b', eyes: 'aside' },
   { id: 'teal', label: 'Teal', main: '#5b8e9d', trim: '#3a4646', ink: '#1e2b2b', eyes: 'sleepy' },
   { id: 'leaf', label: 'Leaf', main: '#4f9158', trim: '#8a6a4f', ink: '#1e2b2b', eyes: 'cross' },
   { id: 'ink', label: 'Ink', main: '#1e2b2b', trim: '#d9d3c3', ink: '#0c0c0c', eyes: 'cat' },
-  { id: 'paper', label: 'Paper', main: '#f7f3e8', trim: '#c47a1a', ink: '#1e2b2b', eyes: 'lids' },
+  { id: 'paper', label: 'Paper', main: '#f7f3e8', trim: '#c47a1a', ink: '#1e2b2b', eyes: 'shine' },
 ]
+
+const EYE_SIZE = 256
+
+function paintEyeCanvas(style, side) {
+  const canvas = document.createElement('canvas')
+  canvas.width = EYE_SIZE
+  canvas.height = EYE_SIZE
+  const ctx = canvas.getContext('2d')
+  const cx = EYE_SIZE / 2
+  const cy = EYE_SIZE / 2
+  const r = EYE_SIZE * 0.46
+  const dir = side === 'left' ? -1 : 1
+  ctx.clearRect(0, 0, EYE_SIZE, EYE_SIZE)
+  const disc = (color, radius, x = 0, y = 0) => {
+    ctx.beginPath()
+    ctx.arc(cx + x, cy + y, radius, 0, Math.PI * 2)
+    ctx.fillStyle = color
+    ctx.fill()
+  }
+  if (style === 'googly') {
+    disc('#ffffff', r)
+    disc('#111111', r * 0.42, dir * r * 0.04, -r * 0.06)
+    disc('#ffffff', r * 0.12, dir * r * 0.12, -r * 0.18)
+  } else if (style === 'rings') {
+    disc('#111111', r)
+    disc('#f7f3e8', r * 0.72)
+    disc('#111111', r * 0.48)
+    disc('#f7f3e8', r * 0.26)
+    disc('#111111', r * 0.1)
+  } else if (style === 'aside') {
+    disc('#ffffff', r)
+    disc('#111111', r * 0.34, dir * r * 0.28, r * 0.08)
+    disc('#ffffff', r * 0.09, dir * r * 0.18, -r * 0.02)
+  } else if (style === 'sleepy') {
+    disc('#111111', r)
+    ctx.strokeStyle = '#f7f3e8'
+    ctx.lineWidth = r * 0.14
+    ctx.lineCap = 'round'
+    ctx.beginPath()
+    ctx.moveTo(cx - r * 0.55, cy + r * 0.02)
+    ctx.quadraticCurveTo(cx, cy - r * 0.12, cx + r * 0.55, cy + r * 0.02)
+    ctx.stroke()
+  } else if (style === 'cross') {
+    disc('#111111', r)
+    ctx.strokeStyle = '#f7f3e8'
+    ctx.lineWidth = r * 0.16
+    ctx.lineCap = 'round'
+    ctx.beginPath()
+    ctx.moveTo(cx - r * 0.42, cy)
+    ctx.lineTo(cx + r * 0.42, cy)
+    ctx.moveTo(cx, cy - r * 0.42)
+    ctx.lineTo(cx, cy + r * 0.42)
+    ctx.stroke()
+  } else if (style === 'cat') {
+    disc('#111111', r)
+    ctx.fillStyle = '#e11d2e'
+    ctx.beginPath()
+    ctx.ellipse(cx, cy, r * 0.42, r * 0.7, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = '#1a0505'
+    ctx.beginPath()
+    ctx.ellipse(cx, cy, r * 0.1, r * 0.58, 0, 0, Math.PI * 2)
+    ctx.fill()
+  } else if (style === 'shine') {
+    disc('#111111', r)
+    ctx.fillStyle = '#f7f3e8'
+    ctx.beginPath()
+    ctx.ellipse(cx + dir * r * -0.08, cy - r * 0.12, r * 0.28, r * 0.4, dir * -0.25, 0, Math.PI * 2)
+    ctx.fill()
+  }
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  texture.needsUpdate = true
+  return texture
+}
+
+/** Visit only the Black eye-socket vertices, even if they share a Head mesh. */
+function forEachBlackVertex(mesh, fn) {
+  const geom = mesh.geometry
+  const pos = geom?.attributes?.position
+  if (!pos) return
+  const nrm = geom.attributes.normal
+  const mats = [].concat(mesh.material)
+  const blackIndex = Math.max(
+    0,
+    mats.findIndex((material) => material?.userData?.lookKind === 'Black'),
+  )
+  const index = geom.index
+  const groups =
+    geom.groups?.length > 0
+      ? geom.groups
+      : [{ start: 0, count: index ? index.count : pos.count, materialIndex: 0 }]
+  const v = new THREE.Vector3()
+  const vn = new THREE.Vector3()
+  for (const group of groups) {
+    if (mats.length > 1 && group.materialIndex !== blackIndex) continue
+    const end = group.start + group.count
+    for (let i = group.start; i < end; i++) {
+      const vi = index ? index.getX(i) : i
+      v.fromBufferAttribute(pos, vi)
+      if (nrm) vn.fromBufferAttribute(nrm, vi)
+      fn(v, nrm ? vn : null)
+    }
+  }
+}
+
+/** Split the Head Black primitive into left/right sockets in mesh-local space. */
+function eyeSocketMarks(mesh) {
+  const buckets = {
+    left: { c: new THREE.Vector3(), n: new THREE.Vector3(), r: 0, count: 0 },
+    right: { c: new THREE.Vector3(), n: new THREE.Vector3(), r: 0, count: 0 },
+  }
+  forEachBlackVertex(mesh, (v, vn) => {
+    const bucket = v.x < 0 ? buckets.left : buckets.right
+    bucket.c.add(v)
+    if (vn) bucket.n.add(vn)
+    bucket.count++
+  })
+  const marks = []
+  for (const side of ['left', 'right']) {
+    const bucket = buckets[side]
+    if (!bucket.count) continue
+    bucket.c.divideScalar(bucket.count)
+    if (bucket.n.lengthSq() > 0) bucket.n.normalize()
+    else bucket.n.set(0, 0, 1)
+    forEachBlackVertex(mesh, (v) => {
+      if ((side === 'left') !== (v.x < 0)) return
+      bucket.r = Math.max(bucket.r, v.distanceTo(bucket.c))
+    })
+    marks.push({ side, center: bucket.c.clone(), normal: bucket.n.clone(), radius: bucket.r })
+  }
+  return marks
+}
 
 export function defaultAgentLook() {
   return { head: 0, body: 0, legs: 0, feet: 0 }
@@ -58,99 +191,20 @@ export function cycleAgentLook(look, slot, dir) {
   return next
 }
 
-function fillCircle(ctx, x, y, r, color) {
-  ctx.fillStyle = color
-  ctx.beginPath()
-  ctx.arc(x, y, r, 0, Math.PI * 2)
-  ctx.fill()
-}
-
-function clipCircle(ctx, x, y, r) {
-  ctx.beginPath()
-  ctx.arc(x, y, r, 0, Math.PI * 2)
-  ctx.clip()
-}
-
-/** Cartoon pupils from the look sheet, one canvas per eye. */
-function makeEyeTexture(style, side) {
-  const size = 128
-  const canvas = document.createElement('canvas')
-  canvas.width = size
-  canvas.height = size
-  const ctx = canvas.getContext('2d')
-  const cx = 64
-  const cy = 64
-  const r = 60
-  const left = side === 'L'
-  ctx.clearRect(0, 0, size, size)
-  ctx.save()
-  clipCircle(ctx, cx, cy, r)
-
-  if (style === 'googly') {
-    fillCircle(ctx, cx, cy, r, '#ffffff')
-    fillCircle(ctx, cx + (left ? -10 : 12), cy - 12, 26, '#111111')
-  } else if (style === 'target') {
-    fillCircle(ctx, cx, cy, r, '#111111')
-    fillCircle(ctx, cx, cy, 42, '#f7f3e8')
-    fillCircle(ctx, cx, cy, 26, '#111111')
-    fillCircle(ctx, cx, cy, 12, '#f7f3e8')
-  } else if (style === 'sleepy') {
-    fillCircle(ctx, cx, cy, r, '#111111')
-    ctx.strokeStyle = '#f7f3e8'
-    ctx.lineWidth = 8
-    ctx.lineCap = 'round'
-    ctx.beginPath()
-    ctx.moveTo(cx - 28, cy - 6)
-    ctx.lineTo(cx + 28, cy - 6)
-    ctx.stroke()
-  } else if (style === 'cross') {
-    fillCircle(ctx, cx, cy, r, '#111111')
-    ctx.strokeStyle = '#f7f3e8'
-    ctx.lineWidth = 10
-    ctx.lineCap = 'square'
-    ctx.beginPath()
-    ctx.moveTo(cx, cy - 28)
-    ctx.lineTo(cx, cy + 28)
-    ctx.moveTo(cx - 28, cy)
-    ctx.lineTo(cx + 28, cy)
-    ctx.stroke()
-  } else if (style === 'cat') {
-    fillCircle(ctx, cx, cy, r, '#111111')
-    ctx.fillStyle = '#e23b2e'
-    ctx.beginPath()
-    ctx.ellipse(cx, cy, 22, 32, 0, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.fillStyle = '#111111'
-    ctx.beginPath()
-    ctx.ellipse(cx, cy, 5, 28, 0, 0, Math.PI * 2)
-    ctx.fill()
-  } else if (style === 'glance') {
-    fillCircle(ctx, cx, cy, r, '#f4f0e6')
-    fillCircle(ctx, cx + (left ? -18 : 16), cy - 4, 22, '#1a1a1a')
-    fillCircle(ctx, cx + (left ? -22 : 20), cy - 8, 6, '#f7f3e8')
-  } else if (style === 'lids') {
-    fillCircle(ctx, cx, cy, r, '#111111')
-    ctx.fillStyle = '#f7f3e8'
-    ctx.beginPath()
-    ctx.arc(cx, cy, r - 2, 0, Math.PI, false)
-    ctx.fill()
-    fillCircle(ctx, cx + (left ? 10 : -8), cy + 10, 18, '#111111')
-  } else {
-    fillCircle(ctx, cx, cy, r, '#111111')
-  }
-
-  ctx.restore()
-  const texture = new THREE.CanvasTexture(canvas)
-  texture.colorSpace = THREE.SRGBColorSpace
-  texture.needsUpdate = true
-  return texture
-}
-
 function lookSlot(name) {
   const n = String(name || '')
   if (n.startsWith('Head')) return 'head'
-  if (n.startsWith('Foot')) return 'feet'
-  if (n.startsWith('Leg') || n.startsWith('LowerLeg')) return 'legs'
+  // Boots are LowerLeg + the Foot cubes. Keep them on one slot so the pair matches.
+  if (n.startsWith('Foot') || n.startsWith('LowerLeg')) return 'feet'
+  if (n.startsWith('Leg') || n.startsWith('UpperLeg')) return 'legs'
+  return 'body'
+}
+
+function lookSlotOf(object) {
+  for (const node of [object, object.parent, object.parent?.parent]) {
+    const slot = lookSlot(node?.name)
+    if (slot !== 'body') return slot
+  }
   return 'body'
 }
 
@@ -205,8 +259,9 @@ export function createPlanetAgent({ gradientMap, makeInk }) {
   let walkingNow = false
   let talking = false
   let lastLookKey = ''
-  let eyeRig = null
-  const eyeTextures = []
+  const eyeOverlays = []
+  const eyeTextures = {}
+  const plantedFeet = []
 
   const fadeTo = (name, duration = 0.35) => {
     const next = actions[name]
@@ -229,23 +284,31 @@ export function createPlanetAgent({ gradientMap, makeInk }) {
     model = gltf.scene
 
     const meshes = []
+    const sourceMaterials = new Set()
+    const toonByKey = new Map()
     model.traverse((object) => {
       if (!object.isMesh) return
       const list = Array.isArray(object.material) ? object.material : [object.material]
+      list.forEach((source) => source && sourceMaterials.add(source))
       const toon = list.map((source) => {
+        const kind = source.name || 'Main'
+        const slot = lookSlotOf(object)
+        const key = `${slot}|${kind}`
+        if (toonByKey.has(key)) return toonByKey.get(key)
         const material = new THREE.MeshToonMaterial({
-          color: source.color,
+          color: source.color?.clone?.() ?? source.color,
           map: source.map ?? null,
           gradientMap,
         })
-        material.userData.lookKind = source.name || 'Main'
-        source.dispose()
+        material.userData.lookKind = kind
         owned.push(material)
+        toonByKey.set(key, material)
         return material
       })
       object.material = Array.isArray(object.material) ? toon : toon[0]
       meshes.push(object)
     })
+    for (const source of sourceMaterials) source.dispose()
 
     model.updateMatrixWorld(true)
     const box = new THREE.Box3().setFromObject(model)
@@ -271,33 +334,67 @@ export function createPlanetAgent({ gradientMap, makeInk }) {
       mesh.frustumCulled = false
       mesh.parent.add(ink)
       mesh.getWorldScale(meshScale)
-      inks.push({ material, scale: Math.max(1e-4, meshScale.x) })
+      const lookKind = [].concat(mesh.material)[0]?.userData?.lookKind
+      inks.push({
+        material,
+        scale: Math.max(1e-4, meshScale.x),
+        ink,
+        lookKind,
+      })
     }
 
     face = model.getObjectByName('Head_4') ?? null
+    model.traverse((object) => {
+      if (object.isBone && /^Foot\.[LR]$/.test(object.name)) {
+        plantedFeet.push({
+          bone: object,
+          position: object.position.clone(),
+          quaternion: object.quaternion.clone(),
+        })
+      }
+    })
+    const blackHead = meshes.find((mesh) =>
+      [].concat(mesh.material).some((material) => material.userData?.lookKind === 'Black'),
+    )
     let headBone = null
     model.traverse((object) => {
       if (object.isBone && object.name === 'Head') headBone = object
     })
-    if (headBone) {
-      const group = new THREE.Group()
-      group.name = 'LookEyes'
-      const geometry = new THREE.CircleGeometry(0.048, 28)
-      const makeMat = () =>
-        new THREE.MeshBasicMaterial({
+    if (blackHead && headBone) {
+      model.updateMatrixWorld(true)
+      const zAxis = new THREE.Vector3(0, 0, 1)
+      const worldNormal = new THREE.Vector3()
+      const boneNormal = new THREE.Vector3()
+      const boneInv = new THREE.Matrix4().copy(headBone.matrixWorld).invert()
+      const marks = eyeSocketMarks(blackHead)
+      const radius = Math.max(0.006, ...marks.map((mark) => mark.radius * 1.18))
+      const eyeGeom = new THREE.CircleGeometry(radius, 28)
+      for (const mark of marks) {
+        const material = new THREE.MeshBasicMaterial({
           transparent: true,
           depthWrite: false,
+          depthTest: true,
+          side: THREE.DoubleSide,
+          toneMapped: false,
+          alphaTest: 0.05,
           polygonOffset: true,
-          polygonOffsetFactor: -4,
+          polygonOffsetFactor: -8,
+          polygonOffsetUnits: -8,
         })
-      const left = new THREE.Mesh(geometry, makeMat())
-      const right = new THREE.Mesh(geometry, makeMat())
-      left.position.set(-0.052, 0.05, 0.1)
-      right.position.set(0.052, 0.05, 0.1)
-      group.add(left, right)
-      headBone.add(group)
-      owned.push(left.material, right.material)
-      eyeRig = { group, left, right, geometry }
+        owned.push(material)
+        const disc = new THREE.Mesh(eyeGeom, material)
+        disc.renderOrder = 12
+        disc.frustumCulled = false
+        disc.position.copy(mark.center).addScaledVector(mark.normal, mark.radius * 0.22)
+        blackHead.localToWorld(disc.position)
+        headBone.worldToLocal(disc.position)
+        worldNormal.copy(mark.normal).transformDirection(blackHead.matrixWorld).normalize()
+        boneNormal.copy(worldNormal).transformDirection(boneInv).normalize()
+        if (boneNormal.lengthSq() > 0) disc.quaternion.setFromUnitVectors(zAxis, boneNormal)
+        disc.visible = false
+        headBone.add(disc)
+        eyeOverlays.push({ disc, side: mark.side, material })
+      }
     }
     root.add(model)
 
@@ -317,42 +414,43 @@ export function createPlanetAgent({ gradientMap, makeInk }) {
     fadeTo(baseClip, 0)
   })
 
-  const paintEyes = (swatch) => {
-    if (!eyeRig) return
-    const style = swatch.eyes ?? 'stock'
-    const show = style !== 'stock'
-    eyeRig.group.visible = show
-    if (!show) return
-    for (const texture of eyeTextures) texture.dispose()
-    eyeTextures.length = 0
-    const left = makeEyeTexture(style, 'L')
-    const right = makeEyeTexture(style, 'R')
-    eyeTextures.push(left, right)
-    eyeRig.left.material.map = left
-    eyeRig.right.material.map = right
-    eyeRig.left.material.needsUpdate = true
-    eyeRig.right.material.needsUpdate = true
-  }
-
   const paintLook = (look) => {
     if (!model) return
     const slots = { ...defaultAgentLook(), ...look }
     const headSwatch = LOOK_SWATCHES[slots.head ?? 0] ?? LOOK_SWATCHES[0]
+    const eyeStyle = headSwatch.eyes ?? 'stock'
     model.traverse((object) => {
       if (!object.isMesh || object.material?.userData?.thickness) return
-      if (object.parent?.name === 'LookEyes') return
-      const swatch = LOOK_SWATCHES[slots[lookSlot(object.name)] ?? 0] ?? LOOK_SWATCHES[0]
+      const swatch = LOOK_SWATCHES[slots[lookSlotOf(object)] ?? 0] ?? LOOK_SWATCHES[0]
       const list = Array.isArray(object.material) ? object.material : [object.material]
       for (const material of list) {
         const kind = material.userData.lookKind
         if (kind === 'Main') material.color.set(swatch.main)
         else if (kind === 'Grey') material.color.set(swatch.trim)
         else if (kind === 'Black') {
-          material.color.set(headSwatch.eyes === 'stock' ? '#0c0c0c' : headSwatch.main)
+          const stock = eyeStyle === 'stock'
+          material.color.set(stock ? '#0c0c0c' : swatch.main)
+          material.transparent = !stock
+          material.opacity = stock ? 1 : 0
+          material.depthWrite = stock
+          material.visible = stock
+          material.needsUpdate = true
         }
       }
     })
-    paintEyes(headSwatch)
+    for (const item of inks) {
+      if (item.lookKind === 'Black') item.ink.visible = eyeStyle === 'stock'
+    }
+    for (const eye of eyeOverlays) {
+      const show = eyeStyle !== 'stock'
+      eye.disc.visible = show
+      if (!show) continue
+      const key = `${eyeStyle}|${eye.side}`
+      if (!eyeTextures[key]) eyeTextures[key] = paintEyeCanvas(eyeStyle, eye.side)
+      eye.material.map = eyeTextures[key]
+      eye.material.color.set('#ffffff')
+      eye.material.needsUpdate = true
+    }
   }
 
   /** Call once per frame with the ground surface sampler. */
@@ -445,6 +543,12 @@ export function createPlanetAgent({ gradientMap, makeInk }) {
     }
 
     mixer.update(dt)
+    if (talking) {
+      for (const foot of plantedFeet) {
+        foot.bone.position.copy(foot.position)
+        foot.bone.quaternion.copy(foot.quaternion)
+      }
+    }
   }
 
   const dispose = () => {
@@ -453,9 +557,9 @@ export function createPlanetAgent({ gradientMap, makeInk }) {
     model?.traverse((object) => {
       if (object.isMesh && !object.material?.userData?.thickness) object.geometry.dispose()
     })
-    for (const texture of eyeTextures) texture.dispose()
-    eyeRig?.geometry.dispose()
     for (const material of owned) material.dispose()
+    for (const texture of Object.values(eyeTextures)) texture.dispose()
+    if (eyeOverlays[0]) eyeOverlays[0].disc.geometry.dispose()
   }
 
   return {

@@ -603,7 +603,8 @@
   color: var(--text-dim);
 }
 
-.agent-talk-line.is-walker {
+.agent-talk-line.is-walker,
+.agent-talk-line.is-ufo {
   color: var(--text);
 }
 

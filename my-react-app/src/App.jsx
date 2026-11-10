@@ -55,6 +55,7 @@ import {
 import { MAX_CARS, createTownParams } from './planetTown.js'
 import AgentLook from './AgentLook.jsx'
 import AgentTalk from './AgentTalk.jsx'
+import UfoTalk from './UfoTalk.jsx'
 import './App.css'
 
 const GalaxyCanvas = lazy(() => import('./GalaxyCanvas.jsx'))
@@ -1139,10 +1140,13 @@ function World({ user, onLeaveGuest }) {
   const [panels, setPanels] = useState({ controls: false, noise: false, debug: false })
   const [talkOpen, setTalkOpen] = useState(false)
   const [lookOpen, setLookOpen] = useState(false)
+  const [ufoOpen, setUfoOpen] = useState(false)
   const debugOpenRef = useRef(false)
   const talkOpenRef = useRef(false)
+  const ufoOpenRef = useRef(false)
   debugOpenRef.current = view === 'planet' && panels.debug
   talkOpenRef.current = view === 'planet' && (talkOpen || lookOpen)
+  ufoOpenRef.current = view === 'planet' && ufoOpen
   const togglePanel = (key) => setPanels((current) => ({ ...current, [key]: !current[key] }))
   const goView = (id) => {
     if (typeof window === 'undefined') return
@@ -1161,7 +1165,11 @@ function World({ user, onLeaveGuest }) {
 
   useEffect(() => {
     if (view === 'break') setPanels((current) => ({ ...current, controls: true }))
-    if (view !== 'planet') setTalkOpen(false)
+    if (view !== 'planet') {
+      setTalkOpen(false)
+      setLookOpen(false)
+      setUfoOpen(false)
+    }
   }, [view])
 
   useEffect(() => {
@@ -1317,7 +1325,7 @@ function World({ user, onLeaveGuest }) {
           : 'Noise field'
   const hint =
     view === 'planet'
-      ? 'Drag to turn · Click the robot to talk. Shirt changes its look, like Messenger.'
+      ? 'Drag to turn · Click the robot to talk. Click the UFO over the ocean. Shirt changes the walker, like Messenger.'
       : view === 'break'
       ? 'Click a column or a limb · Gust and quake load the joints until they snap'
       : view === 'voxel'
@@ -1336,9 +1344,25 @@ function World({ user, onLeaveGuest }) {
             paramsRef={paramsRef}
             debugOpenRef={debugOpenRef}
             talkOpenRef={talkOpenRef}
+            ufoOpenRef={ufoOpenRef}
             onTalk={(open) => {
-              setTalkOpen(open)
-              if (!open) setLookOpen(false)
+              if (open) {
+                setUfoOpen(false)
+                setLookOpen(false)
+                setTalkOpen(true)
+              } else {
+                setTalkOpen(false)
+                setLookOpen(false)
+              }
+            }}
+            onUfo={(open) => {
+              if (open) {
+                setTalkOpen(false)
+                setLookOpen(false)
+                setUfoOpen(true)
+              } else {
+                setUfoOpen(false)
+              }
             }}
             onStats={setPlanetStats}
           />
@@ -1486,6 +1510,8 @@ function World({ user, onLeaveGuest }) {
             }}
             onHide={() => setTalkOpen(false)}
           />
+        ) : view === 'planet' && ufoOpen ? (
+          <UfoTalk onHide={() => setUfoOpen(false)} />
         ) : null}
 
         {panels.controls ? (

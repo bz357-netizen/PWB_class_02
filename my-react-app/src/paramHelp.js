@@ -147,7 +147,7 @@ export const PARAM_HELP = {
   planetCars:
     'How many cars drive the roads. At each town they pick a new road at random. A hit from the robot stops a car or knocks it off the asphalt.',
   planetAgentLook:
-    'Messenger clothes: left and right arrows cycle head, body, legs, and feet. Each slot is a toon color, not a new mesh. The factory look is the stock robot.',
+    'Messenger clothes: left and right arrows cycle head, body, legs, and feet. Feet is the pair of boots (calves plus soles), so both sides stay a match. Each slot is a toon color, not a new mesh. The factory look is the stock robot.',
   planetAgentSize:
     'Height of the robot in world units. Default 0.5 is about 5% of the planet radius, so houses and trees stand taller than the person, as on Messenger.',
   planetAgentSpeed:

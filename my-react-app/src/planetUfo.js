@@ -141,6 +141,8 @@ export function createPlanetUfo({ gradientMap, makeInk }) {
   const dir = new THREE.Vector3()
   let phase = 0
   let placed = false
+  let ping = 0
+  let beam = null
 
   const addPart = (geometry, { emissive, opacity } = {}) => {
     geometries.push(geometry)
@@ -184,7 +186,7 @@ export function createPlanetUfo({ gradientMap, makeInk }) {
   for (let i = 1; i < beamColors.length; i += 3) beamColors[i] = 0.94
   for (let i = 2; i < beamColors.length; i += 3) beamColors[i] = 0.82
   beamGeom.setAttribute('color', new THREE.BufferAttribute(beamColors, 3))
-  addPart(beamGeom, { opacity: 0.22, emissive: '#7dffb0' })
+  beam = addPart(beamGeom, { opacity: 0.22, emissive: '#7dffb0' })
 
   for (let i = 0; i < 8; i++) {
     const bulb = new THREE.SphereGeometry(0.07, 8, 6)
@@ -237,8 +239,13 @@ export function createPlanetUfo({ gradientMap, makeInk }) {
     const pulse = 0.45 + 0.35 * (0.5 + 0.5 * Math.sin(phase * 6))
     for (const light of lights) {
       const mat = light.material
-      if (mat.emissiveIntensity != null) mat.emissiveIntensity = pulse
+      if (mat.emissiveIntensity != null) mat.emissiveIntensity = pulse + ping * 0.8
     }
+    if (beam?.material) {
+      beam.material.opacity = 0.22 + ping * 0.5
+      beam.material.emissiveIntensity = 0.55 + ping * 1.4
+    }
+    if (ping > 0) ping = Math.max(0, ping - dt * 1.25)
   }
 
   const dispose = () => {
@@ -246,5 +253,14 @@ export function createPlanetUfo({ gradientMap, makeInk }) {
     for (const geometry of geometries) geometry.dispose()
   }
 
-  return { root, place, update, dispose, dir }
+  return {
+    root,
+    place,
+    update,
+    dispose,
+    dir,
+    ping: () => {
+      ping = 1
+    },
+  }
 }
