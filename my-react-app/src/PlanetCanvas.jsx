@@ -11,10 +11,12 @@ import {
   seaRadius,
   sortedStops,
 } from './planet.js'
-import { createPlanetAgent } from './planetAgent.js'
+import { LOOK_SWATCHES, createPlanetAgent } from './planetAgent.js'
 import { SHORE_CLEAR, createPlanetTown, townFingerprint } from './planetTown.js'
 import { createPlanetUfo } from './planetUfo.js'
 import { blockedAt, createSurfaceSampler, groundRadius } from './planetWalker.js'
+import { inspectFingerprint, latLonFromDir, round2, vec3 } from './inspectEntity.js'
+import { formatProcessTime, processAt, processCaption } from './worldProcess.js'
 
 const INK = 0x1e2b2b
 /** Ink outline thickness in world units (planet radius is 10). */
@@ -199,17 +201,24 @@ export default function PlanetCanvas({
   debugOpenRef,
   talkOpenRef,
   ufoOpenRef,
+  inspectOnRef,
   onTalk,
   onUfo,
+  onInspectMode,
   onStats,
+  onProcess,
 }) {
   const mountRef = useRef(null)
   const onStatsRef = useRef(onStats)
   const onTalkRef = useRef(onTalk)
   const onUfoRef = useRef(onUfo)
+  const onInspectModeRef = useRef(onInspectMode)
+  const onProcessRef = useRef(onProcess)
   onStatsRef.current = onStats
   onTalkRef.current = onTalk
   onUfoRef.current = onUfo
+  onInspectModeRef.current = onInspectMode
+  onProcessRef.current = onProcess
 
   useEffect(() => {
     const mount = mountRef.current
@@ -414,6 +423,39 @@ export default function PlanetCanvas({
     sitePoints.renderOrder = 2
     planet.add(sitePoints)
 
+    const axes = new THREE.AxesHelper(PLANET_RADIUS * 1.25)
+    axes.visible = false
+    scene.add(axes)
+
+    const grid = new THREE.PolarGridHelper(PLANET_RADIUS * 1.4, 8, 7, 40, INK, 0x7a908c)
+    grid.visible = false
+    scene.add(grid)
+
+    const graphGeom = new THREE.BufferGeometry()
+    const graphMat = new THREE.LineBasicMaterial({ color: 0x3ec4c8, transparent: true, opacity: 0.9 })
+    const graphLines = new THREE.LineSegments(graphGeom, graphMat)
+    graphLines.visible = false
+    graphLines.renderOrder = 5
+    planet.add(graphLines)
+    const nodeGeom = new THREE.BufferGeometry()
+    const nodeMat = new THREE.PointsMaterial({ color: 0xf7f3e8, size: 10, sizeAttenuation: false })
+    const graphNodes = new THREE.Points(nodeGeom, nodeMat)
+    graphNodes.visible = false
+    graphNodes.renderOrder = 6
+    planet.add(graphNodes)
+    const unusedGeom = new THREE.BufferGeometry()
+    const unusedMat = new THREE.PointsMaterial({ color: 0xe07a5f, size: 9, sizeAttenuation: false })
+    const unusedNodes = new THREE.Points(unusedGeom, unusedMat)
+    unusedNodes.visible = false
+    unusedNodes.renderOrder = 6
+    planet.add(unusedNodes)
+    const refuseGeom = new THREE.BufferGeometry()
+    const refuseMat = new THREE.PointsMaterial({ vertexColors: true, size: 6, sizeAttenuation: false })
+    const refusePoints = new THREE.Points(refuseGeom, refuseMat)
+    refusePoints.visible = false
+    refusePoints.renderOrder = 6
+    planet.add(refusePoints)
+
     const probe = new THREE.Mesh(
       new THREE.SphereGeometry(0.09, 10, 8),
       new THREE.MeshBasicMaterial({ color: 0xfff04a }),
@@ -481,6 +523,25 @@ export default function PlanetCanvas({
     ocean.renderOrder = 1
     planet.add(ocean)
 
+    const inspectMat = new THREE.Matrix4()
+    const inspectBox = new THREE.Box3()
+    const inspectSize = new THREE.Vector3()
+    const inspectCenter = new THREE.Vector3()
+    const inspectMark = new THREE.Mesh(
+      new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshBasicMaterial({
+        color: 0xffc43a,
+        wireframe: true,
+        depthTest: false,
+        transparent: true,
+        opacity: 0.92,
+      }),
+    )
+    inspectMark.renderOrder = 24
+    inspectMark.frustumCulled = false
+    inspectMark.visible = false
+    scene.add(inspectMark)
+
     const setOceanRes = (value) => {
       const res = Math.max(8, Math.min(512, Math.round(value)))
       if (res === oceanRes) return
@@ -500,13 +561,551 @@ export default function PlanetCanvas({
     let lastHoverKey = ''
     let agentInfo = null
     let lastAgentKey = ''
+    let inspectTarget = null
+    let inspectPick = null
+    let lastInspectKey = ''
     const pointer = new THREE.Vector2(2, 2)
     const raycaster = new THREE.Raycaster()
     const localHit = new THREE.Vector3()
 
+    let townMs = 0
+    let processTime = 0
+    let processOn = false
+    let processSeekId = null
+    let processTick = -1
+    let lastProcessStage = ''
+    let processInfo = null
+    let film = null
+    let filmCtx = null
+    let recorder = null
+    let chunks = []
+    const filmSize = new THREE.Vector2()
+    const filmCam = new THREE.Vector3(0.72, 0.42, 0.55).normalize()
+
     const publishStats = () => {
-      if (!stats) return
-      onStatsRef.current?.({ ...stats, ...town.counts, hover, agent: agentInfo })
+      onStatsRef.current?.({
+        ...(stats ?? {}),
+        ...town.counts,
+        hover,
+        agent: agentInfo,
+        townMs,
+        ufo: ufo.root.visible,
+        inspect: inspectOnRef?.current === true ? inspectPick : null,
+        process: processInfo,
+      })
+    }
+
+    const pickFilmMime = () => {
+      if (typeof MediaRecorder === 'undefined') return ''
+      const types = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4']
+      return types.find((type) => MediaRecorder.isTypeSupported(type)) ?? ''
+    }
+
+    const wrapFilmText = (ctx, text, x, y, maxWidth, lineHeight, maxLines) => {
+      const words = String(text).split(/\s+/).filter(Boolean)
+      let line = ''
+      let used = 0
+      for (const word of words) {
+        const next = line ? `${line} ${word}` : word
+        if (ctx.measureText(next).width > maxWidth && line) {
+          ctx.fillText(line, x, y)
+          y += lineHeight
+          line = word
+          used += 1
+          if (used >= maxLines) return
+        } else {
+          line = next
+        }
+      }
+      if (line && used < maxLines) ctx.fillText(line, x, y)
+    }
+
+    const ensureFilm = (lockSize) => {
+      renderer.getDrawingBufferSize(filmSize)
+      if (!film) {
+        film = document.createElement('canvas')
+        filmCtx = film.getContext('2d')
+      }
+      if (lockSize && recorder) return
+      if (film.width !== filmSize.x || film.height !== filmSize.y) {
+        film.width = filmSize.x
+        film.height = filmSize.y
+      }
+    }
+
+    const stopFilm = (download) => {
+      const rec = recorder
+      recorder = null
+      const dump = () => {
+        if (download && chunks.length) {
+          const blob = new Blob(chunks, { type: rec?.mimeType || 'video/webm' })
+          const url = URL.createObjectURL(blob)
+          const a = document.createElement('a')
+          a.href = url
+          a.download = 'this-world-process.webm'
+          a.click()
+          URL.revokeObjectURL(url)
+        }
+        chunks = []
+      }
+      if (!rec) {
+        chunks = []
+        return
+      }
+      rec.ondataavailable = (event) => {
+        if (event.data?.size) chunks.push(event.data)
+      }
+      rec.onstop = dump
+      if (rec.state === 'inactive') dump()
+      else rec.stop()
+    }
+
+    const startFilm = () => {
+      if (recorder || typeof MediaRecorder === 'undefined') return
+      ensureFilm(false)
+      const mime = pickFilmMime()
+      let stream
+      try {
+        stream = film.captureStream(30)
+        recorder = mime ? new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 6_000_000 }) : new MediaRecorder(stream)
+      } catch {
+        recorder = null
+        return
+      }
+      chunks = []
+      recorder.ondataavailable = (event) => {
+        if (event.data?.size) chunks.push(event.data)
+      }
+      recorder.start(400)
+    }
+
+    const drawFilmCard = (caption, at) => {
+      if (!filmCtx || !caption) return
+      const w = film.width
+      const h = film.height
+      const pad = Math.round(h * 0.035)
+      const boxH = Math.round(h * 0.2)
+      filmCtx.fillStyle = 'rgba(12, 18, 18, 0.78)'
+      filmCtx.fillRect(0, h - boxH, w, boxH)
+      filmCtx.fillStyle = '#f4efe4'
+      filmCtx.font = `600 ${Math.round(h * 0.042)}px "IBM Plex Sans", sans-serif`
+      filmCtx.fillText(caption.title, pad, h - boxH + Math.round(h * 0.07))
+      filmCtx.fillStyle = '#c9d6d2'
+      filmCtx.font = `${Math.round(h * 0.024)}px "IBM Plex Sans", sans-serif`
+      wrapFilmText(filmCtx, caption.detail, pad, h - boxH + Math.round(h * 0.11), w - pad * 2, Math.round(h * 0.032), 2)
+      filmCtx.fillStyle = '#9eb0ab'
+      filmCtx.font = `${Math.round(h * 0.02)}px "IBM Plex Sans", sans-serif`
+      filmCtx.fillText(
+        `${caption.step}/${caption.steps} · ${formatProcessTime(at.time)} / ${formatProcessTime(at.total)}`,
+        pad,
+        h - pad * 0.7,
+      )
+    }
+
+    const blitFilm = (caption, at) => {
+      ensureFilm(true)
+      if (!filmCtx) return
+      filmCtx.drawImage(renderer.domElement, 0, 0, film.width, film.height)
+      drawFilmCard(caption, at)
+    }
+
+    const applyProcess = (params, dt) => {
+      if (params.processOn !== true) {
+        if (processOn) {
+          town.setProcess(null)
+          if (params.debug?.hideTown) town.root.visible = false
+          if (recorder) {
+            stopFilm(true)
+            onProcessRef.current?.({ processRecord: false })
+          }
+          processOn = false
+          processInfo = null
+          publishStats()
+        }
+        processOn = false
+        processInfo = null
+        return
+      }
+      if (!processOn) {
+        processTime = 0
+        lastProcessStage = ''
+      }
+      processOn = true
+      const seek = params.processSeek
+      if (seek?.id != null && seek.id !== processSeekId) {
+        processSeekId = seek.id
+        processTime = Number(seek.time) || 0
+        processTick = -1
+      }
+      if (params.processPaused !== true) processTime += dt * (params.processRate ?? 1)
+      const at = processAt(processTime)
+      processTime = at.time
+      const flags = at.stage.flags
+      if (flags.land) {
+        ground.visible = false
+        debugLand.visible = true
+        groundInk.visible = false
+        if (lastProcessStage !== at.stage.id) paintDebugLand(params)
+      } else if (!flags.filled) {
+        ground.visible = false
+        debugLand.visible = false
+        groundInk.visible = false
+      } else {
+        ground.visible = params.showMesh !== false
+        debugLand.visible = false
+        groundInk.visible = params.debug?.hideInk !== true
+      }
+      wire.visible = flags.wire === true || (!flags.filled && flags.wire !== false)
+      if (!flags.filled) wireMat.opacity = 0.7
+      ocean.visible = flags.ocean === true && params.planetOcean !== false && flags.filled
+      seaInk.visible = ocean.visible && params.debug?.hideInk !== true
+      uniforms.uRoadOn.value = flags.roads === true && params.planetRoads !== false ? 1 : 0
+      town.setProcess(flags)
+      if (params.debug?.hideTown === true && !flags.houses && !flags.trees && !flags.lamps && !flags.cars) {
+        town.root.visible = false
+      }
+      ufo.root.visible = flags.ufo === true && ufo.root.visible
+      agent.root.visible = flags.agent === true && params.planetAgent !== false && agent.root.visible
+      sitePoints.visible = params.debug?.sites === true && (flags.houses || flags.trees || flags.lamps)
+      axes.visible = false
+      grid.visible = false
+      graphLines.visible = false
+      graphNodes.visible = false
+      unusedNodes.visible = false
+      refusePoints.visible = false
+      const caption = processCaption(at.stage, params, {
+        ...stats,
+        ...town.counts,
+        hover,
+        agent: agentInfo,
+        townMs,
+        ufo: ufo.root.visible,
+      })
+      processInfo = {
+        time: at.time,
+        total: at.total,
+        index: at.index,
+        title: caption.title,
+        detail: caption.detail,
+        step: caption.step,
+        steps: caption.steps,
+        done: at.done,
+        recording: Boolean(recorder) || params.processRecord === true,
+      }
+      if (at.done && params.processPaused !== true) {
+        paramsRef.current.processPaused = true
+        const patch = { processPaused: true }
+        if (recorder || params.processRecord === true) {
+          stopFilm(true)
+          paramsRef.current.processRecord = false
+          patch.processRecord = false
+        }
+        onProcessRef.current?.(patch)
+      } else if (params.processRecord === true) {
+        if (!recorder) {
+          startFilm()
+          if (!recorder) onProcessRef.current?.({ processRecord: false })
+        }
+      } else if (recorder) {
+        stopFilm(true)
+      }
+      lastProcessStage = at.stage.id
+      const tick = Math.floor(at.time * 8)
+      if (tick !== processTick) {
+        processTick = tick
+        publishStats()
+      }
+    }
+
+    const markInspectBox = (box) => {
+      if (box.isEmpty()) {
+        inspectMark.visible = false
+        return
+      }
+      box.getCenter(inspectCenter)
+      box.getSize(inspectSize)
+      inspectSize.multiplyScalar(1.08)
+      inspectMark.position.copy(inspectCenter)
+      inspectMark.scale.copy(inspectSize)
+      inspectMark.quaternion.identity()
+      inspectMark.visible = true
+    }
+
+    const instanceWorldBox = (mesh, index) => {
+      if (!mesh || index == null || index < 0 || index >= mesh.count) return inspectBox.makeEmpty()
+      mesh.updateMatrixWorld(true)
+      mesh.getMatrixAt(index, inspectMat)
+      inspectMat.premultiply(mesh.matrixWorld)
+      inspectBox.setFromBufferAttribute(mesh.geometry.attributes.position)
+      inspectBox.applyMatrix4(inspectMat)
+      return inspectBox
+    }
+
+    const dirFromWorld = (world) => {
+      localHit.copy(world)
+      planet.worldToLocal(localHit)
+      return localHit.lengthSq() > 1e-8 ? localHit.normalize() : localHit.set(0, 1, 0)
+    }
+
+    const liveInspect = (params) => {
+      const on = inspectOnRef?.current === true
+      if (!on) {
+        inspectMark.visible = false
+        inspectPick = null
+        if (renderer.domElement.style.cursor === 'crosshair' || renderer.domElement.style.cursor === 'pointer') {
+          renderer.domElement.style.cursor = ''
+        }
+        return
+      }
+      if (inspectTarget?.type === 'house' && inspectTarget.index >= (town.walls?.length ?? 0)) inspectTarget = null
+      if (inspectTarget?.type === 'tree' && inspectTarget.index >= (town.trunks?.length ?? 0)) inspectTarget = null
+      if (inspectTarget?.type === 'car' && inspectTarget.index >= (town.cars?.length ?? 0)) inspectTarget = null
+      if (inspectTarget?.type === 'lamp' && inspectTarget.index >= (town.sites?.lamps?.length ?? 0)) inspectTarget = null
+      if (!inspectTarget) {
+        inspectMark.visible = false
+        inspectPick = null
+        return
+      }
+
+      const look = params.planetAgentLook ?? {}
+      const sea = seaRadius(params)
+      if (inspectTarget.type === 'walker') {
+        agent.root.updateMatrixWorld(true)
+        inspectBox.setFromObject(agent.root)
+        markInspectBox(inspectBox)
+        const pose = agent.getCollision()
+        const world = inspectCenter
+        const dir = dirFromWorld(world)
+        const r = groundRadius(dir, params, surface)
+        const at = latLonFromDir(dir)
+        inspectPick = {
+          kind: 'Walker',
+          id: 'walker',
+          transform: {
+            position: vec3(world),
+            scale: [round2(pose.size ?? 0.5), round2(pose.size ?? 0.5), round2(pose.size ?? 0.5)],
+            radius: round2(pose.radius ?? 0),
+            lat: at.lat,
+            lon: at.lon,
+          },
+          state: {
+            moving: pose.moving ? 'walk' : 'idle',
+            stuck: pose.stuck ?? 0,
+            place: agentInfo?.place ?? '—',
+            zone: r < sea ? 'water' : r < sea + SHORE_CLEAR ? 'shore' : 'land',
+            delta: round2(r - sea),
+            talking: talkOpenRef?.current === true,
+            look: ['head', 'body', 'legs', 'feet']
+              .map((slot) => LOOK_SWATCHES[look[slot] ?? 0]?.label ?? 'Factory')
+              .join(' / '),
+          },
+          components: ['SkinnedMesh', 'Toon', 'Ink', 'Capsule', 'Mixer', 'Look'],
+        }
+        return
+      }
+      if (inspectTarget.type === 'ufo') {
+        ufo.root.updateMatrixWorld(true)
+        inspectBox.setFromObject(ufo.root)
+        markInspectBox(inspectBox)
+        const world = inspectCenter
+        const dir = ufo.dir?.lengthSq?.() > 0 ? ufo.dir : dirFromWorld(world)
+        const at = latLonFromDir(dir)
+        inspectPick = {
+          kind: 'Saucer',
+          id: 'ufo',
+          transform: {
+            position: vec3(world),
+            scale: vec3(ufo.root.scale),
+            radius: round2(inspectSize.length() * 0.5),
+            lat: at.lat,
+            lon: at.lon,
+          },
+          state: {
+            visible: ufo.root.visible,
+            ocean: params.planetOcean !== false,
+            hover: 'tree-top',
+          },
+          components: ['Toon saucer', 'Ink', 'Beam', 'Rim lights'],
+        }
+        return
+      }
+      if (inspectTarget.type === 'ground' || inspectTarget.type === 'ocean') {
+        const world = inspectTarget.point
+        if (world) {
+          inspectBox.setFromCenterAndSize(world, inspectSize.set(0.35, 0.35, 0.35))
+          markInspectBox(inspectBox)
+        } else inspectMark.visible = false
+        const dir = world ? dirFromWorld(world) : localHit.set(0, 1, 0)
+        const r = groundRadius(dir, params, surface)
+        const at = latLonFromDir(dir)
+        const water = inspectTarget.type === 'ocean'
+        inspectPick = {
+          kind: water ? 'Ocean' : 'Ground',
+          id: water ? 'ocean' : 'ground',
+          transform: {
+            position: vec3(world),
+            scale: [1, 1, 1],
+            radius: round2(r),
+            lat: at.lat,
+            lon: at.lon,
+          },
+          state: {
+            zone: r < sea ? 'water' : r < sea + SHORE_CLEAR ? 'shore' : 'land',
+            delta: round2(r - sea),
+            mapping: params.planetMapping,
+            mesh: params.planetMesh === 'cube' ? 'cube' : 'uv',
+          },
+          components: water
+            ? ['Water sphere', 'Foam', 'Ripples']
+            : ['Displaced sphere', 'aElev', 'Toon shader', 'Road mask'],
+        }
+        return
+      }
+
+      const { type, index, mesh } = inspectTarget
+      instanceWorldBox(mesh, index)
+      markInspectBox(inspectBox)
+      const world = inspectCenter.clone()
+      const dir = dirFromWorld(world)
+      const at = latLonFromDir(dir)
+      const r = groundRadius(dir, params, surface)
+      if (type === 'house') {
+        const wall = town.walls[index]
+        inspectPick = {
+          kind: 'House',
+          id: `house-${index}`,
+          transform: {
+            position: vec3(world),
+            scale: wall ? [round2(wall.halfX * 2), round2(1), round2(wall.halfZ * 2)] : vec3(inspectSize),
+            radius: round2(r),
+            lat: at.lat,
+            lon: at.lon,
+          },
+          state: {
+            index,
+            zone: r < sea ? 'water' : r < sea + SHORE_CLEAR ? 'shore' : 'land',
+            delta: round2(r - sea),
+            collider: 'OBB',
+            planted: 'dry footprint',
+          },
+          components: ['InstancedMesh walls', 'Roof', 'Door', 'Toon', 'Ink', 'OBB'],
+        }
+        return
+      }
+      if (type === 'tree') {
+        const trunk = town.trunks[index]
+        inspectPick = {
+          kind: 'Tree',
+          id: `tree-${index}`,
+          transform: {
+            position: vec3(world),
+            scale: vec3(inspectSize),
+            radius: round2(trunk?.radius ?? r),
+            lat: at.lat,
+            lon: at.lon,
+          },
+          state: {
+            index,
+            zone: r < sea ? 'water' : 'land',
+            delta: round2(r - sea),
+            trunk: round2(trunk?.radius ?? 0),
+            collider: 'circle',
+          },
+          components: ['InstancedMesh trunk', 'Canopy', 'Toon', 'Ink', 'Trunk circle'],
+        }
+        return
+      }
+      if (type === 'lamp') {
+        inspectPick = {
+          kind: 'Lamp',
+          id: `lamp-${index}`,
+          transform: {
+            position: vec3(world),
+            scale: vec3(inspectSize),
+            radius: round2(r),
+            lat: at.lat,
+            lon: at.lon,
+          },
+          state: {
+            index,
+            zone: r < sea ? 'water' : 'land',
+            delta: round2(r - sea),
+            along: 'road',
+          },
+          components: ['InstancedMesh', 'Toon', 'Emissive', 'Ink'],
+        }
+        return
+      }
+      if (type === 'car') {
+        const car = town.cars[index]
+        inspectPick = {
+          kind: 'Car',
+          id: `car-${index}`,
+          transform: {
+            position: vec3(world),
+            scale: car ? [round2(car.halfX * 2), round2(1), round2(car.halfZ * 2)] : vec3(inspectSize),
+            radius: round2(r),
+            lat: at.lat,
+            lon: at.lon,
+          },
+          state: {
+            index,
+            speed: round2(car?.speed ?? 0),
+            stun: round2(car?.stun ?? 0),
+            offRoad: Boolean(car?.offRoad),
+            edge: car?.edge ?? '—',
+            color: car?.color ?? '—',
+            collider: 'OBB',
+          },
+          components: ['InstancedMesh', 'Toon', 'Ink', 'Road driver', 'OBB'],
+        }
+      }
+    }
+
+    const pickInspect = () => {
+      const hideTown = paramsRef.current.debug?.hideTown === true
+      const list = []
+      if (agent.root.visible) list.push(agent.root)
+      if (ufo.root.visible) list.push(ufo.root)
+      if (!hideTown && town.root.visible) list.push(...town.inspectMeshes())
+      if (ground.visible) list.push(ground)
+      if (ocean.visible) list.push(ocean)
+      const hits = raycaster.intersectObjects(list, true)
+      const hit = hits[0]
+      if (!hit) return
+      if (hit.object === ocean || hit.object.parent === ocean) {
+        inspectTarget = { type: 'ocean', point: hit.point.clone() }
+        return
+      }
+      if (hit.object === ground || hit.object.parent === ground) {
+        inspectTarget = { type: 'ground', point: hit.point.clone() }
+        return
+      }
+      let node = hit.object
+      while (node) {
+        if (node === agent.root) {
+          inspectTarget = { type: 'walker' }
+          return
+        }
+        if (node === ufo.root) {
+          inspectTarget = { type: 'ufo' }
+          return
+        }
+        node = node.parent
+      }
+      const found = town.identifyPick(hit.object, hit.instanceId)
+      inspectTarget = found ?? { type: 'ground', point: hit.point.clone() }
+    }
+
+    const inspectCursor = () => {
+      if (inspectOnRef?.current !== true) return null
+      const hideTown = paramsRef.current.debug?.hideTown === true
+      const list = []
+      if (agent.root.visible) list.push(agent.root)
+      if (ufo.root.visible) list.push(ufo.root)
+      if (!hideTown && town.root.visible) list.push(...town.inspectMeshes())
+      const hits = raycaster.intersectObjects(list, true)
+      return hits.length ? 'pointer' : 'crosshair'
     }
 
     const syncAgentDebug = (params) => {
@@ -628,6 +1227,55 @@ export default function PlanetCanvas({
       debugGeom.computeBoundingSphere()
     }
 
+    const paintDebugElev = () => {
+      const pos = groundGeom.attributes.position
+      const elev = groundGeom.attributes.aElev
+      if (!pos || !elev) return
+      debugGeom.setAttribute('position', pos)
+      debugGeom.setIndex(groundGeom.index)
+      const count = pos.count
+      let colors = debugGeom.attributes.color
+      if (!colors || colors.count !== count) {
+        colors = new THREE.BufferAttribute(new Float32Array(count * 3), 3)
+        debugGeom.setAttribute('color', colors)
+      }
+      const arr = colors.array
+      const stops = [
+        [0, 0.07, 0.1, 0.28],
+        [0.28, 0.16, 0.52, 0.58],
+        [0.5, 0.93, 0.78, 0.4],
+        [0.72, 0.38, 0.64, 0.32],
+        [1, 0.95, 0.94, 0.88],
+      ]
+      for (let i = 0; i < count; i++) {
+        const t = THREE.MathUtils.clamp(elev.getX(i), 0, 1)
+        let r = stops[0][1]
+        let g = stops[0][2]
+        let b = stops[0][3]
+        for (let s = 1; s < stops.length; s++) {
+          const a = stops[s - 1]
+          const c = stops[s]
+          if (t <= c[0] || s === stops.length - 1) {
+            const u = (t - a[0]) / Math.max(1e-6, c[0] - a[0])
+            r = a[1] + (c[1] - a[1]) * u
+            g = a[2] + (c[2] - a[2]) * u
+            b = a[3] + (c[3] - a[3]) * u
+            break
+          }
+        }
+        arr[i * 3] = r
+        arr[i * 3 + 1] = g
+        arr[i * 3 + 2] = b
+      }
+      colors.needsUpdate = true
+      debugGeom.computeBoundingSphere()
+    }
+
+    const paintDebugOverlay = (params) => {
+      if (params.debug?.elev === true) paintDebugElev()
+      else paintDebugLand(params)
+    }
+
     const syncSitePoints = () => {
       const { houses, trees, lamps } = town.sites
       const n = houses.length + trees.length + lamps.length
@@ -651,6 +1299,38 @@ export default function PlanetCanvas({
       siteGeom.setAttribute('position', new THREE.BufferAttribute(pos, 3))
       siteGeom.setAttribute('color', new THREE.BufferAttribute(col, 3))
       siteGeom.computeBoundingSphere()
+    }
+
+    const syncNetwork = () => {
+      const net = town.network
+      graphGeom.setAttribute('position', new THREE.BufferAttribute(net.lines, 3))
+      nodeGeom.setAttribute('position', new THREE.BufferAttribute(net.nodes, 3))
+      unusedGeom.setAttribute('position', new THREE.BufferAttribute(net.unused, 3))
+      graphGeom.computeBoundingSphere()
+      nodeGeom.computeBoundingSphere()
+      unusedGeom.computeBoundingSphere()
+      const refused = town.sites.refused
+      const pos = new Float32Array(refused.length * 3)
+      const col = new Float32Array(refused.length * 3)
+      const tint = {
+        water: [0.86, 0.28, 0.3],
+        road: [0.28, 0.62, 0.78],
+        crowd: [0.92, 0.62, 0.22],
+        far: [0.62, 0.42, 0.78],
+      }
+      for (let i = 0; i < refused.length; i++) {
+        const p = refused[i]
+        pos[i * 3] = p.x
+        pos[i * 3 + 1] = p.y
+        pos[i * 3 + 2] = p.z
+        const c = tint[p.reason] ?? tint.water
+        col[i * 3] = c[0]
+        col[i * 3 + 1] = c[1]
+        col[i * 3 + 2] = c[2]
+      }
+      refuseGeom.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+      refuseGeom.setAttribute('color', new THREE.BufferAttribute(col, 3))
+      refuseGeom.computeBoundingSphere()
     }
 
     const countLand = (params) => {
@@ -695,7 +1375,7 @@ export default function PlanetCanvas({
         mesh: params.planetMesh,
         detail: detail,
       }
-      paintDebugLand(params)
+      paintDebugOverlay(params)
       countLand(params)
     }
 
@@ -712,13 +1392,21 @@ export default function PlanetCanvas({
       const debug = params.debug ?? {}
       const filled = params.showMesh !== false
       const landOn = debug.land === true
-      ground.visible = filled && !landOn
-      debugLand.visible = landOn
+      const elevOn = debug.elev === true
+      const overlayOn = landOn || elevOn
+      ground.visible = filled && !overlayOn
+      debugLand.visible = overlayOn
       groundInk.visible = filled && debug.hideInk !== true
       wire.visible = !filled || debug.wire === true
       wireMat.opacity = filled && debug.wire === true ? 0.32 : 0.45
       sitePoints.visible = debug.sites === true
-      if (landOn) paintDebugLand(params)
+      axes.visible = debug.axes === true
+      grid.visible = debug.grid === true
+      graphLines.visible = debug.graph === true
+      graphNodes.visible = debug.graph === true
+      unusedNodes.visible = debug.graph === true
+      refusePoints.visible = debug.refuse === true
+      if (overlayOn) paintDebugOverlay(params)
 
       ocean.visible = params.planetOcean !== false && filled && debug.hideOcean !== true
       setOceanRes(params.planetOceanRes ?? 128)
@@ -769,6 +1457,12 @@ export default function PlanetCanvas({
         sitePoints.visible,
         probe.visible,
         agentGizmo.visible,
+        axes.visible,
+        grid.visible,
+        graphLines.visible,
+        graphNodes.visible,
+        unusedNodes.visible,
+        refusePoints.visible,
       ]
       ocean.visible = false
       groundInk.visible = false
@@ -778,6 +1472,12 @@ export default function PlanetCanvas({
       sitePoints.visible = false
       probe.visible = false
       agentGizmo.visible = false
+      axes.visible = false
+      grid.visible = false
+      graphLines.visible = false
+      graphNodes.visible = false
+      unusedNodes.visible = false
+      refusePoints.visible = false
       scene.overrideMaterial = depthOnly
       renderer.setRenderTarget(depthTarget)
       renderer.clear()
@@ -793,6 +1493,12 @@ export default function PlanetCanvas({
         sitePoints.visible,
         probe.visible,
         agentGizmo.visible,
+        axes.visible,
+        grid.visible,
+        graphLines.visible,
+        graphNodes.visible,
+        unusedNodes.visible,
+        refusePoints.visible,
       ] = keep
     }
     resize()
@@ -816,9 +1522,12 @@ export default function PlanetCanvas({
       const nextTownKey = `${buildKey}|${townFingerprint(params)}`
       if (nextTownKey !== townKey && now - lastTown > TOWN_GAP_MS) {
         townKey = nextTownKey
+        const townStarted = performance.now()
         town.build(params, surface)
         ufo.place(params, surface, town.sites.trees)
+        townMs = Math.round(performance.now() - townStarted)
         syncSitePoints()
+        syncNetwork()
         lastTown = performance.now()
         publishStats()
       }
@@ -836,12 +1545,23 @@ export default function PlanetCanvas({
       agent.update(dt, params, surface, town)
       town.syncCars(params, surface)
       if (params.debug?.hideAgent) agent.root.visible = false
+      applyProcess(params, dt)
+      liveInspect(params)
       if (freezeCam) {
         const want = ufoFocus ? 'ufo' : 'agent'
         if (!talkCam.on || talkCam.kind !== want) {
           if (want === 'ufo' && ufo.root.visible) lockUfoCamera()
           else if (want === 'agent' && agent.root.visible) lockTalkCamera()
         }
+      } else if (params.processOn === true) {
+        if (talkCam.on) unlockTalkCamera()
+        controls.enabled = false
+        const fit = (PLANET_RADIUS * 1.7) / (Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * Math.max(camera.aspect, 0.2))
+        const want = THREE.MathUtils.clamp(Math.max(PLANET_RADIUS * 3.8, fit), controls.minDistance, controls.maxDistance)
+        camera.position.copy(filmCam).multiplyScalar(want)
+        camera.up.set(0, 1, 0)
+        camera.lookAt(0, 0, 0)
+        controls.target.set(0, 0, 0)
       } else {
         if (talkCam.on) unlockTalkCamera()
         const follow = params.planetFollow ?? 'robot'
@@ -868,7 +1588,10 @@ export default function PlanetCanvas({
       syncAgentDebug(params)
       oceanUniforms.uPhase.value += dt * (params.planetWaveSpeed ?? 1)
 
-      if (!freezeCam) controls.update()
+      if (!freezeCam && params.processOn !== true) {
+        controls.enabled = true
+        controls.update()
+      }
       const needDepth =
         ocean.visible && (params.planetFoamOn !== false || params.planetRipplesOn !== false)
       oceanUniforms.uUseDepth.value = needDepth ? 1 : 0
@@ -923,13 +1646,16 @@ export default function PlanetCanvas({
       const agentKey = agentInfo
         ? `${agentInfo.moving ? 1 : 0}|${agentInfo.stuck}|${agentInfo.place}|${agentInfo.zone}|${agentInfo.lat.toFixed(1)}|${agentInfo.lon.toFixed(1)}|${agentInfo.lookAnchors?.head?.left?.y ?? 0}|${agentInfo.lookAnchors?.feet?.left?.y ?? 0}`
         : ''
-      if (hoverKey !== lastHoverKey || agentKey !== lastAgentKey) {
+      const inspectKey = inspectOnRef?.current === true ? inspectFingerprint(inspectPick) || 'on' : ''
+      if (hoverKey !== lastHoverKey || agentKey !== lastAgentKey || inspectKey !== lastInspectKey) {
         lastHoverKey = hoverKey
         lastAgentKey = agentKey
+        lastInspectKey = inspectKey
         publishStats()
       }
 
       renderer.render(scene, camera)
+      if (recorder && processInfo) blitFilm(processInfo, processAt(processTime))
       frameId = requestAnimationFrame(animate)
     }
     animate()
@@ -939,9 +1665,14 @@ export default function PlanetCanvas({
       pointer.x = ((event.clientX - rect.left) / Math.max(rect.width, 1)) * 2 - 1
       pointer.y = -((event.clientY - rect.top) / Math.max(rect.height, 1)) * 2 + 1
       raycaster.setFromCamera(pointer, camera)
-      const overAgent = agent.root.visible && raycaster.intersectObject(agent.root, true).length > 0
-      const overUfo = ufo.root.visible && raycaster.intersectObject(ufo.root, true).length > 0
-      renderer.domElement.style.cursor = overAgent || overUfo ? 'pointer' : ''
+      const inspectCursorNow = inspectCursor()
+      if (inspectCursorNow) {
+        renderer.domElement.style.cursor = inspectCursorNow
+      } else {
+        const overAgent = agent.root.visible && raycaster.intersectObject(agent.root, true).length > 0
+        const overUfo = ufo.root.visible && raycaster.intersectObject(ufo.root, true).length > 0
+        renderer.domElement.style.cursor = overAgent || overUfo ? 'pointer' : ''
+      }
     }
     const onPointerLeave = () => {
       pointer.set(2, 2)
@@ -962,6 +1693,12 @@ export default function PlanetCanvas({
       pointer.x = ((event.clientX - rect.left) / Math.max(rect.width, 1)) * 2 - 1
       pointer.y = -((event.clientY - rect.top) / Math.max(rect.height, 1)) * 2 + 1
       raycaster.setFromCamera(pointer, camera)
+      if (inspectOnRef?.current === true) {
+        pickInspect()
+        liveInspect(paramsRef.current)
+        publishStats()
+        return
+      }
       const overAgent = agent.root.visible && raycaster.intersectObject(agent.root, true).length > 0
       const overUfo = ufo.root.visible && raycaster.intersectObject(ufo.root, true).length > 0
       if (overAgent) onTalkRef.current?.(true)
@@ -975,10 +1712,31 @@ export default function PlanetCanvas({
     renderer.domElement.addEventListener('pointerleave', onPointerLeave)
     renderer.domElement.addEventListener('pointerdown', onPointerDown)
     renderer.domElement.addEventListener('pointerup', onPointerUp)
+    const onKeyDown = (event) => {
+      if (event.code !== 'Space' && event.key !== ' ') return
+      const tag = String(event.target?.tagName ?? '')
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || event.target?.isContentEditable) return
+      event.preventDefault()
+      if (event.repeat) return
+      const next = inspectOnRef?.current !== true
+      if (!next) {
+        inspectTarget = null
+        inspectPick = null
+        inspectMark.visible = false
+        renderer.domElement.style.cursor = ''
+        publishStats()
+      } else {
+        renderer.domElement.style.cursor = 'crosshair'
+      }
+      onInspectModeRef.current?.(next)
+    }
+    window.addEventListener('keydown', onKeyDown)
 
     return () => {
       cancelAnimationFrame(frameId)
+      stopFilm(false)
       window.removeEventListener('resize', resize)
+      window.removeEventListener('keydown', onKeyDown)
       renderer.domElement.removeEventListener('pointermove', onPointerMove)
       renderer.domElement.removeEventListener('pointerleave', onPointerLeave)
       renderer.domElement.removeEventListener('pointerdown', onPointerDown)
@@ -993,6 +1751,18 @@ export default function PlanetCanvas({
       debugLandMat.dispose()
       siteGeom.dispose()
       siteMat.dispose()
+      graphGeom.dispose()
+      graphMat.dispose()
+      nodeGeom.dispose()
+      nodeMat.dispose()
+      unusedGeom.dispose()
+      unusedMat.dispose()
+      refuseGeom.dispose()
+      refuseMat.dispose()
+      axes.geometry.dispose()
+      axes.material.dispose()
+      grid.geometry.dispose()
+      grid.material.dispose()
       probe.geometry.dispose()
       probe.material.dispose()
       agentCap.geometry.dispose()
@@ -1006,6 +1776,8 @@ export default function PlanetCanvas({
       depthTarget.depthTexture.dispose()
       depthTarget.dispose()
       depthOnly.dispose()
+      inspectMark.geometry.dispose()
+      inspectMark.material.dispose()
       agent.dispose()
       ufo.dispose()
       town.dispose()
@@ -1018,7 +1790,7 @@ export default function PlanetCanvas({
         mount.removeChild(renderer.domElement)
       }
     }
-  }, [paramsRef, debugOpenRef, talkOpenRef, ufoOpenRef])
+  }, [paramsRef, debugOpenRef, talkOpenRef, ufoOpenRef, inspectOnRef])
 
   return <div className="galaxy-canvas" ref={mountRef} />
 }

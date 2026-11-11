@@ -333,13 +333,125 @@
   bottom: var(--inset);
 }
 
+.dock-tab.is-process {
+  left: calc(var(--inset) + 176px);
+  bottom: var(--inset);
+}
+
+.process-film {
+  position: absolute;
+  z-index: 6;
+  left: 50%;
+  bottom: var(--inset);
+  width: min(540px, calc(100% - 32px));
+  transform: translateX(-50%);
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-panel-90);
+  color: var(--text);
+  pointer-events: auto;
+}
+
+.process-film .panel-head {
+  margin: 0 0 2px;
+}
+
+.process-film-kicker {
+  margin: 0;
+  font-size: var(--text-kicker);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.process-film.is-rec .process-film-kicker {
+  color: #c44b4b;
+}
+
+.process-film-title {
+  margin: 2px 0 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.process-film-detail {
+  margin: 2px 0 0;
+  font-size: var(--text-hint);
+  line-height: 1.35;
+  color: var(--text-dim);
+}
+
+.process-film-row,
+.process-film-rates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.process-film-row button,
+.process-film-rates button {
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--text-ui);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.process-film-row button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.process-film-row button.is-on,
+.process-film-rates button.is-on,
+.process-film-row button:hover:not(:disabled),
+.process-film-rates button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.process-film-scrub {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-ui);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.process-film-scrub input {
+  width: 100%;
+}
+
+.app:has(.process-film) .dock-tab.is-noise,
+.app:has(.process-film) .dock-tab.is-debug,
+.app:has(.process-film) .dock-tab.is-process {
+  bottom: calc(var(--inset) + 156px);
+}
+
+.app:has(.process-film) .debug-panel {
+  bottom: calc(var(--inset) + 196px);
+}
+
 .debug-panel {
   position: absolute;
   z-index: 5;
   left: var(--inset);
   bottom: calc(var(--inset) + 40px);
-  width: min(280px, calc(100% - 32px));
-  max-height: min(48vh, 420px);
+  width: min(300px, calc(100% - 32px));
+  max-height: min(62vh, 560px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -353,6 +465,55 @@
 
 .debug-panel .panel-body {
   padding-top: 8px;
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1;
+}
+
+.debug-report {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  counter-reset: build-step;
+}
+
+.debug-report li {
+  position: relative;
+  margin: 0 0 8px;
+  padding: 0 0 0 1.7em;
+  line-height: 1.35;
+}
+
+.debug-report li::before {
+  counter-increment: build-step;
+  content: counter(build-step);
+  position: absolute;
+  left: 0;
+  top: 0.1em;
+  width: 1.35em;
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-hint);
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+}
+
+.debug-report strong {
+  display: block;
+  font-weight: 600;
+  font-size: var(--text-ui);
+}
+
+.debug-report span {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-dim);
+  font-size: var(--text-hint);
+  line-height: 1.4;
+}
+
+.debug-report li.is-skip,
+.debug-report li.is-wait {
+  opacity: 0.62;
 }
 
 .debug-legend {
@@ -406,6 +567,92 @@
   background: #4ec4ff;
 }
 
+.debug-swatch.is-elev-low {
+  background: #1a2e68;
+}
+
+.debug-swatch.is-elev-mid {
+  background: #edc766;
+}
+
+.debug-swatch.is-elev-high {
+  background: #f3f0e2;
+}
+
+.debug-swatch.is-road {
+  background: #3ec4c8;
+}
+
+.debug-swatch.is-town {
+  background: #f7f3e8;
+}
+
+.debug-swatch.is-unused {
+  background: #e07a5f;
+}
+
+.debug-swatch.is-crowd {
+  background: #eb9e38;
+}
+
+.debug-swatch.is-far {
+  background: #9e6bc8;
+}
+
+.debug-help {
+  margin-top: -4px;
+}
+
+.debug-now {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border: 2px solid var(--ink);
+  border-radius: 4px;
+  background: #fffdf6;
+  font-size: var(--text-hint);
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.debug-challenges {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+}
+
+.debug-challenges li {
+  margin: 0 0 8px;
+  padding: 0 0 0 0.7em;
+  border-left: 3px solid var(--line);
+  line-height: 1.35;
+}
+
+.debug-challenges li.is-perf {
+  border-left-color: #c44b4b;
+}
+
+.debug-challenges li.is-logic {
+  border-left-color: #e07a5f;
+}
+
+.debug-challenges li.is-ok {
+  border-left-color: #6bb366;
+}
+
+.debug-challenges strong {
+  display: block;
+  font-weight: 600;
+  font-size: var(--text-ui);
+}
+
+.debug-challenges span {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-dim);
+  font-size: var(--text-hint);
+  line-height: 1.4;
+}
+
 .debug-line {
   margin: 0 0 8px;
   font-variant-numeric: tabular-nums;
@@ -414,6 +661,68 @@
 
 .app:has(.noise-panel) .debug-panel {
   left: calc(var(--inset) + var(--map-width) + 12px);
+}
+
+.inspect-panel {
+  position: absolute;
+  z-index: 5;
+  left: auto;
+  right: var(--inset);
+  top: auto;
+  bottom: calc(var(--inset) + 40px);
+  transform: none;
+  width: min(280px, calc(100% - 32px));
+  max-height: min(48vh, 420px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 12px;
+  pointer-events: auto;
+}
+
+.app:has(.side-panel) .inspect-panel {
+  right: calc(var(--inset) + var(--panel-width) + 12px);
+}
+
+.inspect-body {
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.inspect-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 6px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.35;
+}
+
+.inspect-row span {
+  color: var(--text-dim);
+  text-transform: lowercase;
+  letter-spacing: 0.04em;
+}
+
+.inspect-row b {
+  font-weight: 600;
+  text-align: right;
+  word-break: break-word;
+}
+
+.inspect-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 8px;
+}
+
+.inspect-tags span {
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: var(--text-hint);
+  letter-spacing: 0.04em;
 }
 
 .agent-talk {
@@ -1580,7 +1889,8 @@
 
   .dock-tab.is-noise,
   .dock-tab.is-controls,
-  .dock-tab.is-debug {
+  .dock-tab.is-debug,
+  .dock-tab.is-process {
     top: auto;
     right: auto;
     bottom: var(--inset);
@@ -1598,16 +1908,37 @@
     left: 214px;
   }
 
+  .dock-tab.is-process {
+    left: 300px;
+  }
+
   .debug-panel {
     left: var(--inset);
     right: auto;
     width: min(280px, calc(100% - 32px));
-    max-height: 34vh;
+    max-height: 48vh;
     bottom: calc(var(--inset) + 36px);
   }
 
+  .process-film {
+    width: min(540px, calc(100% - 24px));
+  }
+
+  .app:has(.process-film) .dock-tab.is-noise,
+  .app:has(.process-film) .dock-tab.is-debug,
+  .app:has(.process-film) .dock-tab.is-controls,
+  .app:has(.process-film) .dock-tab.is-process {
+    bottom: calc(var(--inset) + 156px);
+  }
+
+  .app:has(.process-film) .debug-panel {
+    bottom: calc(var(--inset) + 196px);
+  }
+
   .agent-talk,
-  .app:has(.side-panel) .agent-talk {
+  .app:has(.side-panel) .agent-talk,
+  .inspect-panel,
+  .app:has(.side-panel) .inspect-panel {
     left: auto;
     right: var(--inset);
     width: min(260px, calc(50% - 12px));
@@ -1702,12 +2033,14 @@
 .side-panel,
 .noise-panel,
 .debug-panel,
+.inspect-panel,
 .agent-talk,
 .hand-panel,
 .hand-hint,
 .account-pop,
 .gate-card,
-.param-tooltip {
+.param-tooltip,
+.process-film {
   border: 2px solid var(--ink);
   border-radius: 6px;
   background: var(--bg-panel-90);
@@ -1717,8 +2050,10 @@
 .side-panel h2,
 .noise-panel h2,
 .debug-panel h2,
+.inspect-panel h2,
 .agent-talk h2,
 .hand-head h2,
+.process-film h2,
 .panel-section > summary {
   font-family: var(--font-display);
   font-size: 12px;
@@ -1730,6 +2065,7 @@
 .side-panel h2,
 .noise-panel h2,
 .debug-panel h2,
+.inspect-panel h2,
 .agent-talk h2,
 .panel-section > summary,
 .panel-head,
@@ -1739,7 +2075,9 @@
 
 .dock-tab,
 .account-chip,
-.view-tabs button {
+.view-tabs button,
+.process-film-row button,
+.process-film-rates button {
   border: 2px solid var(--ink);
   border-radius: 5px;
   background: var(--sun);
@@ -1772,7 +2110,9 @@
 .account-chip:hover,
 .account-chip:focus-visible,
 .view-tabs button:hover,
-.view-tabs button:focus-visible {
+.view-tabs button:focus-visible,
+.process-film-row button:hover:not(:disabled),
+.process-film-rates button:hover {
   border-color: var(--ink);
   color: var(--ink);
   transform: translate(-1px, -1px);

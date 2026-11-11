@@ -42,6 +42,8 @@ import {
   createOceanParams,
   rampCss,
 } from './planet.js'
+import { worldBuildReport } from './worldReport.js'
+import { DEBUG_GROUPS, debugChallenges, debugNow } from './debugLayers.js'
 import {
   AGENT_EMOTES,
   AGENT_EXPRESSIONS,
@@ -56,6 +58,18 @@ import { MAX_CARS, createTownParams } from './planetTown.js'
 import AgentLook from './AgentLook.jsx'
 import AgentTalk from './AgentTalk.jsx'
 import UfoTalk from './UfoTalk.jsx'
+import InspectPanel from './InspectPanel.jsx'
+import ProcessFilm from './ProcessFilm.jsx'
+import {
+  SKIN_EMOTES,
+  SKIN_EXPRESSIONS,
+  SKIN_PARTS,
+  SKIN_STATES,
+  createSkinParams,
+  formatSkinTime,
+  partPose,
+} from './skinStudio.js'
+import { createProcessParams, formatProcessTime } from './worldProcess.js'
 import './App.css'
 
 const GalaxyCanvas = lazy(() => import('./GalaxyCanvas.jsx'))
@@ -64,6 +78,7 @@ const CsgCanvas = lazy(() => import('./CsgCanvas.jsx'))
 const ShaderCanvas = lazy(() => import('./ShaderCanvas.jsx'))
 const DeconstructCanvas = lazy(() => import('./DeconstructCanvas.jsx'))
 const PlanetCanvas = lazy(() => import('./PlanetCanvas.jsx'))
+const SkinCanvas = lazy(() => import('./SkinCanvas.jsx'))
 
 const PLANE_RESOLUTIONS = [95, 300, 500, 1000]
 const VOXEL_RESOLUTIONS = [24, 32, 48, 64]
@@ -71,6 +86,7 @@ const CSG_RESOLUTIONS = [16, 24, 32, 40]
 
 const VIEWS = [
   { id: 'planet', label: 'Planet' },
+  { id: 'skin', label: 'Skin' },
   { id: 'field', label: 'Field' },
   { id: 'shaders', label: 'Shaders' },
   { id: 'voxel', label: 'Voxel' },
@@ -128,6 +144,8 @@ const initialParams = {
   ...createOceanParams(),
   ...createAgentParams(),
   ...createTownParams(),
+  ...createSkinParams(),
+  ...createProcessParams(),
   planetSpin: 0.2,
   planetStepped: true,
   planetStops: createColorStops(),
@@ -943,9 +961,21 @@ function PlanetControls({ params, stats, onChange }) {
           format={(value) => String(Math.round(value))}
           helpKey="planetCars"
         />
+        <p className="debug-line">
+          Seed {params.planetTownSeed ?? 1}
+          {params.seedLock !== false ? ' · locked' : ' · unlocked'}
+        </p>
         <div className="btn-row">
           <button
             type="button"
+            className={params.seedLock !== false ? 'is-on' : ''}
+            onClick={() => onChange('seedLock')(params.seedLock === false)}
+          >
+            Lock seed
+          </button>
+          <button
+            type="button"
+            disabled={params.seedLock !== false}
             onClick={() => onChange('planetTownSeed')(((params.planetTownSeed ?? 1) % 9999) + 1)}
           >
             Reroll town
@@ -961,9 +991,20 @@ function formatPct(value) {
   return `${Math.round(value * 100)}%`
 }
 
-function DebugPanel({ params, stats, onChange, onHide }) {
+function DebugPanel({ params, stats, onChange, onPatch, onHide }) {
   const debug = params.debug ?? createDebugParams()
   const setFlag = (key) => () => onChange('debug')({ ...debug, [key]: !debug[key] })
+  const playLayer = (id) => () => {
+    const off = debug[id] === true
+    onChange('debug')({
+      ...createDebugParams(),
+      hideOcean: debug.hideOcean === true,
+      hideTown: debug.hideTown === true,
+      hideInk: debug.hideInk === true,
+      hideAgent: debug.hideAgent === true,
+      [id]: !off,
+    })
+  }
   const hover = stats?.hover
   const mesh = params.planetMesh === 'cube' ? 'Cube' : 'UV rings'
 
@@ -976,24 +1017,26 @@ function DebugPanel({ params, stats, onChange, onHide }) {
         </button>
       </div>
       <div className="panel-body">
-        <p className="panel-note">
-          Overlays for reading the mesh. They are not saved with a setup.
-        </p>
-        <p className="panel-note">Paint</p>
-        <div className="btn-row">
-          <button type="button" className={debug.land ? 'is-on' : ''} onClick={setFlag('land')}>
-            Land / water
-          </button>
-          <button type="button" className={debug.wire ? 'is-on' : ''} onClick={setFlag('wire')}>
-            Wire
-          </button>
-          <button type="button" className={debug.sites ? 'is-on' : ''} onClick={setFlag('sites')}>
-            Sites
-          </button>
-          <button type="button" className={debug.agent ? 'is-on' : ''} onClick={setFlag('agent')}>
-            Agent
-          </button>
-        </div>
+        <p className="debug-now">{debugNow(debug)}</p>
+        {DEBUG_GROUPS.map((group) => (
+          <div key={group.id}>
+            <p className="panel-note">{group.title}</p>
+            <p className="panel-note debug-help">{group.note}</p>
+            <div className="btn-row">
+              {group.tools.map((tool) => (
+                <button
+                  key={tool.id}
+                  type="button"
+                  className={debug[tool.id] ? 'is-on' : ''}
+                  title={tool.see}
+                  onClick={playLayer(tool.id)}
+                >
+                  {tool.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
         {debug.land ? (
           <p className="panel-note debug-legend">
             <span>
@@ -1010,6 +1053,22 @@ function DebugPanel({ params, stats, onChange, onHide }) {
             </span>
           </p>
         ) : null}
+        {debug.elev ? (
+          <p className="panel-note debug-legend">
+            <span>
+              <i className="debug-swatch is-elev-low" />
+              low
+            </span>
+            <span>
+              <i className="debug-swatch is-elev-mid" />
+              mid
+            </span>
+            <span>
+              <i className="debug-swatch is-elev-high" />
+              high
+            </span>
+          </p>
+        ) : null}
         {debug.sites ? (
           <p className="panel-note debug-legend">
             <span>
@@ -1023,6 +1082,42 @@ function DebugPanel({ params, stats, onChange, onHide }) {
             <span>
               <i className="debug-swatch is-lamp" />
               lamp
+            </span>
+          </p>
+        ) : null}
+        {debug.graph ? (
+          <p className="panel-note debug-legend">
+            <span>
+              <i className="debug-swatch is-road" />
+              path
+            </span>
+            <span>
+              <i className="debug-swatch is-town" />
+              town
+            </span>
+            <span>
+              <i className="debug-swatch is-unused" />
+              unused seed
+            </span>
+          </p>
+        ) : null}
+        {debug.refuse ? (
+          <p className="panel-note debug-legend">
+            <span>
+              <i className="debug-swatch is-water" />
+              water
+            </span>
+            <span>
+              <i className="debug-swatch is-road" />
+              road
+            </span>
+            <span>
+              <i className="debug-swatch is-crowd" />
+              crowd
+            </span>
+            <span>
+              <i className="debug-swatch is-far" />
+              far
             </span>
           </p>
         ) : null}
@@ -1074,6 +1169,41 @@ function DebugPanel({ params, stats, onChange, onHide }) {
             Clear overlays
           </button>
         </div>
+        <p className="panel-note">How it is built</p>
+        <ol className="debug-report">
+          {worldBuildReport(params, stats).map((step, index) => (
+            <li key={`${index}-${step.title}`} className={step.state === 'ok' ? undefined : `is-${step.state}`}>
+              <strong>{step.title}</strong>
+              <span>{step.detail}</span>
+            </li>
+          ))}
+        </ol>
+        <p className="panel-note">Process film</p>
+        <div className="btn-row">
+          <button
+            type="button"
+            className={params.processOn ? 'is-on' : ''}
+            onClick={() =>
+              onPatch({
+                processOn: !params.processOn,
+                processPaused: false,
+                processRecord: false,
+                processSeek: params.processOn ? params.processSeek : { id: Date.now(), time: 0 },
+              })
+            }
+          >
+            {params.processOn ? 'Stop process' : 'Play process'}
+          </button>
+        </div>
+        <p className="panel-note">What is still hard</p>
+        <ul className="debug-challenges">
+          {debugChallenges(params, stats).map((item) => (
+            <li key={item.id} className={`is-${item.kind}`}>
+              <strong>{item.title}</strong>
+              <span>{item.detail}</span>
+            </li>
+          ))}
+        </ul>
         <p className="panel-note">Mesh</p>
         <p className="debug-line">
           {mesh} · {Math.round(params.planetDetail ?? 64)}
@@ -1086,8 +1216,12 @@ function DebugPanel({ params, stats, onChange, onHide }) {
         </p>
         <p className="panel-note">Town</p>
         <p className="debug-line">
+          seed {params.planetTownSeed ?? 1}
+          {params.seedLock !== false ? ' · locked' : ' · unlocked'}
+        </p>
+        <p className="debug-line">
           {stats
-            ? `${stats.towns ?? 0} towns · ${stats.roads ?? 0} roads · ${stats.houses ?? 0} houses · ${stats.trees ?? 0} trees · ${stats.lamps ?? 0} lamps`
+            ? `${stats.towns ?? 0} towns · ${stats.roads ?? 0} roads · ${stats.houses ?? 0} houses · ${stats.refused ?? 0} refused · ${stats.trees ?? 0} trees · ${stats.lamps ?? 0} lamps`
             : '…'}
         </p>
         <p className="panel-note">Agent</p>
@@ -1118,6 +1252,304 @@ function DebugPanel({ params, stats, onChange, onHide }) {
   )
 }
 
+function SkinControls({ params, stats, onChange, onPatch }) {
+  const pose = partPose(params.skinPose, params.skinPart)
+  const setPose = (axis, value) => {
+    onChange('skinPose')({
+      ...(params.skinPose ?? {}),
+      [params.skinPart]: { ...pose, [axis]: value },
+    })
+  }
+  const locked = params.seedLock !== false
+  const tape = stats?.tape ?? 0
+  const duration = stats?.duration ?? 0
+  return (
+    <>
+      <PanelSection
+        title="Time"
+        note="A video clock. Pause, step one frame (1/30 s), or slow the rate. Record captures each tick so you can scrub cause and effect."
+      >
+        <div className="btn-row">
+          <button
+            type="button"
+            className={!params.skinPaused ? 'is-on' : ''}
+            onClick={() => onChange('skinPaused')(false)}
+          >
+            Play
+          </button>
+          <button
+            type="button"
+            className={params.skinPaused ? 'is-on' : ''}
+            onClick={() => onChange('skinPaused')(true)}
+          >
+            Pause
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              onPatch({
+                skinPaused: true,
+                skinStep: { id: Date.now(), dir: -1 },
+              })
+            }
+          >
+            ◀ Frame
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              onPatch({
+                skinPaused: true,
+                skinStep: { id: Date.now(), dir: 1 },
+              })
+            }
+          >
+            Frame ▶
+          </button>
+        </div>
+        <Slider
+          label="Rate"
+          min={0.05}
+          max={2}
+          step={0.05}
+          value={params.skinRate ?? 1}
+          onChange={onChange('skinRate')}
+          format={(value) => `${value.toFixed(2)}×`}
+          helpKey="skinRate"
+        />
+        <Slider
+          label="Clip"
+          min={0}
+          max={Math.max(0.01, duration)}
+          step={1 / 30}
+          value={Math.min(stats?.time ?? 0, duration)}
+          onChange={(time) =>
+            onPatch({
+              skinPaused: true,
+              skinReplay: false,
+              skinSeek: { id: Date.now(), time },
+            })
+          }
+          format={(value) => formatSkinTime(value)}
+          helpKey="skinClipTime"
+        />
+        <p className="panel-note">Tape</p>
+        <div className="btn-row">
+          <button
+            type="button"
+            className={params.skinRecord ? 'is-on' : ''}
+            onClick={() =>
+              onPatch({
+                skinRecord: !params.skinRecord,
+                skinReplay: false,
+                skinPaused: params.skinRecord ? params.skinPaused : false,
+              })
+            }
+          >
+            {params.skinRecord ? 'Recording' : 'Record'}
+          </button>
+          <button
+            type="button"
+            className={params.skinReplay ? 'is-on' : ''}
+            disabled={tape < 1}
+            onClick={() =>
+              onPatch({
+                skinReplay: !params.skinReplay,
+                skinRecord: false,
+                skinPaused: false,
+                skinPlayhead: { id: Date.now(), frame: 0 },
+              })
+            }
+          >
+            Replay
+          </button>
+          <button
+            type="button"
+            disabled={tape < 1}
+            onClick={() =>
+              onPatch({
+                skinReplay: false,
+                skinRecord: false,
+                skinTapeClear: { id: Date.now() },
+              })
+            }
+          >
+            Clear
+          </button>
+        </div>
+        <Slider
+          label="Scrub"
+          min={0}
+          max={Math.max(1, tape - 1)}
+          step={1}
+          value={Math.min(stats?.playhead ?? 0, Math.max(0, tape - 1))}
+          onChange={(frame) =>
+            onPatch({
+              skinPaused: true,
+              skinReplay: true,
+              skinRecord: false,
+              skinPlayhead: { id: Date.now(), frame },
+            })
+          }
+          format={(value) => (tape ? `${Math.round(value) + 1} / ${tape}` : 'empty')}
+          helpKey="skinScrub"
+        />
+        <p className="debug-line">
+          {stats
+            ? `${stats.clip ?? '…'} · ${formatSkinTime(stats.time ?? 0)} / ${formatSkinTime(duration)} · ${stats.bones ?? 0} bones${
+                stats.recording ? ' · rec' : ''
+              }${stats.replaying ? ' · replay' : ''}`
+            : 'Loading the robot…'}
+        </p>
+      </PanelSection>
+      <PanelSection
+        title="Seed"
+        note="Lock the number so a bug or a generated town can be reproduced exactly. Unlock only when you want a new roll."
+      >
+        <p className="debug-line">
+          Run {params.skinSeed ?? 1} · Town {params.planetTownSeed ?? 1}
+          {locked ? ' · locked' : ' · unlocked'}
+        </p>
+        <div className="btn-row">
+          <button
+            type="button"
+            className={locked ? 'is-on' : ''}
+            onClick={() => onChange('seedLock')(!locked)}
+          >
+            Lock
+          </button>
+          <button
+            type="button"
+            disabled={locked}
+            onClick={() =>
+              onPatch({
+                skinSeed: ((params.skinSeed ?? 1) % 9999) + 1,
+                planetTownSeed: ((params.planetTownSeed ?? 1) % 9999) + 1,
+              })
+            }
+          >
+            Roll
+          </button>
+        </div>
+      </PanelSection>
+      <PanelSection
+        title="Skinning"
+        note="Same robot as three.js skinning + morph. Clips move the bones. You can add a turn on top. Pause to pose."
+      >
+        <p className="panel-note">Draw</p>
+        <div className="btn-row">
+          <button
+            type="button"
+            className={params.skinSkeleton !== false ? 'is-on' : ''}
+            onClick={() => onChange('skinSkeleton')(params.skinSkeleton === false)}
+          >
+            Skeleton
+          </button>
+          <button
+            type="button"
+            className={params.skinMesh !== false ? 'is-on' : ''}
+            onClick={() => onChange('skinMesh')(params.skinMesh === false)}
+          >
+            Mesh
+          </button>
+        </div>
+      </PanelSection>
+      <PanelSection title="States" note="Looping clips, except Sit / Stand / Death hold the last frame.">
+        <div className="btn-row">
+          {SKIN_STATES.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={(params.skinClip ?? 'Walking') === item.id ? 'is-on' : ''}
+              onClick={() => onChange('skinClip')(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        <p className="panel-note">Emotes (play once, then back)</p>
+        <div className="btn-row">
+          {SKIN_EMOTES.map((name) => (
+            <button
+              key={name}
+              type="button"
+              onClick={() => onChange('skinEmote')({ name, id: Date.now() })}
+            >
+              {name === 'ThumbsUp' ? 'Thumbs up' : name}
+            </button>
+          ))}
+        </div>
+      </PanelSection>
+      <PanelSection title="Body" note="Pick a joint, then turn it. The extra rotation sits on top of the clip. A yellow mark sits on the selected bone.">
+        <div className="btn-row">
+          {SKIN_PARTS.map((part) => (
+            <button
+              key={part.id}
+              type="button"
+              className={(params.skinPart ?? 'head') === part.id ? 'is-on' : ''}
+              onClick={() => onChange('skinPart')(part.id)}
+            >
+              {part.label}
+            </button>
+          ))}
+        </div>
+        <Slider
+          label="Bend X"
+          min={-120}
+          max={120}
+          step={1}
+          value={pose.x}
+          onChange={(value) => setPose('x', value)}
+          format={(value) => `${Math.round(value)}°`}
+          helpKey="skinBend"
+        />
+        <Slider
+          label="Turn Y"
+          min={-120}
+          max={120}
+          step={1}
+          value={pose.y}
+          onChange={(value) => setPose('y', value)}
+          format={(value) => `${Math.round(value)}°`}
+          helpKey="skinBend"
+        />
+        <Slider
+          label="Roll Z"
+          min={-120}
+          max={120}
+          step={1}
+          value={pose.z}
+          onChange={(value) => setPose('z', value)}
+          format={(value) => `${Math.round(value)}°`}
+          helpKey="skinBend"
+        />
+        <div className="layer-actions">
+          <button type="button" onClick={() => onChange('skinPose')({})}>
+            Reset pose
+          </button>
+        </div>
+      </PanelSection>
+      <PanelSection
+        title="Face morphs"
+        note="These are not bones. They slide vertices on Head_4, the same sliders as the three.js example."
+        defaultOpen={false}
+      >
+        {SKIN_EXPRESSIONS.map((item) => (
+          <Slider
+            key={item.key}
+            label={item.label}
+            min={0}
+            max={1}
+            step={0.01}
+            value={params[item.key] ?? 0}
+            onChange={onChange(item.key)}
+          />
+        ))}
+      </PanelSection>
+    </>
+  )
+}
+
 function World({ user, onLeaveGuest }) {
   const paramsRef = useRef({
     ...initialParams,
@@ -1127,6 +1559,7 @@ function World({ user, onLeaveGuest }) {
       Object.entries(initialParams.scatter).map(([id, value]) => [id, { ...value }]),
     ),
     debug: { ...initialParams.debug },
+    skinPose: { ...(initialParams.skinPose ?? {}) },
   })
   const [params, setParams] = useState(initialParams)
   const [selected, setSelected] = useState(0)
@@ -1134,19 +1567,23 @@ function World({ user, onLeaveGuest }) {
   const [scatterStats, setScatterStats] = useState(null)
   const [breakStats, setBreakStats] = useState(null)
   const [planetStats, setPlanetStats] = useState(null)
+  const [skinStats, setSkinStats] = useState(null)
   const [view, setView] = useState(() =>
     typeof window !== 'undefined' ? viewFromHash(window.location.hash) : 'planet',
   )
-  const [panels, setPanels] = useState({ controls: false, noise: false, debug: false })
+  const [panels, setPanels] = useState({ controls: false, noise: false, debug: false, process: false })
   const [talkOpen, setTalkOpen] = useState(false)
   const [lookOpen, setLookOpen] = useState(false)
   const [ufoOpen, setUfoOpen] = useState(false)
+  const [inspectOn, setInspectOn] = useState(false)
   const debugOpenRef = useRef(false)
   const talkOpenRef = useRef(false)
   const ufoOpenRef = useRef(false)
+  const inspectOnRef = useRef(false)
   debugOpenRef.current = view === 'planet' && panels.debug
   talkOpenRef.current = view === 'planet' && (talkOpen || lookOpen)
   ufoOpenRef.current = view === 'planet' && ufoOpen
+  inspectOnRef.current = view === 'planet' && inspectOn
   const togglePanel = (key) => setPanels((current) => ({ ...current, [key]: !current[key] }))
   const goView = (id) => {
     if (typeof window === 'undefined') return
@@ -1164,11 +1601,23 @@ function World({ user, onLeaveGuest }) {
   }, [])
 
   useEffect(() => {
-    if (view === 'break') setPanels((current) => ({ ...current, controls: true }))
+    if (view === 'break' || view === 'skin') setPanels((current) => ({ ...current, controls: true }))
     if (view !== 'planet') {
       setTalkOpen(false)
       setLookOpen(false)
       setUfoOpen(false)
+      setInspectOn(false)
+      setPlanetStats(null)
+      if (paramsRef.current.processOn || paramsRef.current.processRecord) {
+        const next = {
+          ...paramsRef.current,
+          processOn: false,
+          processPaused: false,
+          processRecord: false,
+        }
+        paramsRef.current = next
+        setParams(next)
+      }
     }
   }, [view])
 
@@ -1314,6 +1763,8 @@ function World({ user, onLeaveGuest }) {
   const title =
     view === 'planet'
       ? 'Planet'
+      : view === 'skin'
+      ? 'Skinning'
       : view === 'break'
       ? 'Deconstruction'
       : view === 'voxel'
@@ -1325,7 +1776,13 @@ function World({ user, onLeaveGuest }) {
           : 'Noise field'
   const hint =
     view === 'planet'
-      ? 'Drag to turn · Click the robot to talk. Click the UFO over the ocean. Shirt changes the walker, like Messenger.'
+      ? params.processOn
+        ? 'Process film · Pause, scrub, or Record a 3:30 WebM of this world’s pipeline.'
+        : inspectOn
+        ? 'Inspect on · Click an entity for transform, state, and components. Space leaves inspect.'
+        : 'Drag to turn · Click the robot to talk. Click the UFO over the ocean. Space inspects. Process plays the build film.'
+      : view === 'skin'
+      ? 'Pause, step a frame, or record a tape and scrub it. Lock the seed so the same town rolls again.'
       : view === 'break'
       ? 'Click a column or a limb · Gust and quake load the joints until they snap'
       : view === 'voxel'
@@ -1345,6 +1802,7 @@ function World({ user, onLeaveGuest }) {
             debugOpenRef={debugOpenRef}
             talkOpenRef={talkOpenRef}
             ufoOpenRef={ufoOpenRef}
+            inspectOnRef={inspectOnRef}
             onTalk={(open) => {
               if (open) {
                 setUfoOpen(false)
@@ -1364,8 +1822,19 @@ function World({ user, onLeaveGuest }) {
                 setUfoOpen(false)
               }
             }}
+            onInspectMode={(on) => {
+              setInspectOn(on)
+              if (on) {
+                setTalkOpen(false)
+                setLookOpen(false)
+                setUfoOpen(false)
+              }
+            }}
             onStats={setPlanetStats}
+            onProcess={(partial) => commit({ ...paramsRef.current, ...partial })}
           />
+        ) : view === 'skin' ? (
+          <SkinCanvas paramsRef={paramsRef} onStats={setSkinStats} />
         ) : view === 'break' ? (
           <DeconstructCanvas paramsRef={paramsRef} onStats={setBreakStats} />
         ) : view === 'csg' ? (
@@ -1410,9 +1879,19 @@ function World({ user, onLeaveGuest }) {
               WX <b>{weatherLabel}</b>
             </span>
             <span>
-              {view === 'break' ? 'JNT' : view === 'csg' ? 'SOL' : view === 'shaders' ? 'SHD' : 'LYR'}{' '}
+              {view === 'skin'
+                ? 'CLP'
+                : view === 'break'
+                  ? 'JNT'
+                  : view === 'csg'
+                    ? 'SOL'
+                    : view === 'shaders'
+                      ? 'SHD'
+                      : 'LYR'}{' '}
               <b>
-                {view === 'break'
+                {view === 'skin'
+                  ? skinStats?.clip ?? '…'
+                  : view === 'break'
                   ? breakStats
                     ? `${breakStats.intact}/${breakStats.broken}`
                     : '…'
@@ -1424,13 +1903,19 @@ function World({ user, onLeaveGuest }) {
               </b>
             </span>
             <span>
-              RES{' '}
+              {view === 'skin' ? 'TAP' : view === 'planet' && params.processOn ? 'FILM' : 'RES'}{' '}
               <b>
-                {view === 'csg'
+                {view === 'skin'
+                  ? skinStats?.tape
+                    ? `${(skinStats.playhead ?? 0) + 1}/${skinStats.tape}`
+                    : '0'
+                  : view === 'csg'
                   ? Math.round(params.csgCells)
                   : view === 'voxel'
                     ? Math.round(params.voxelCells)
-                    : view === 'planet'
+                    : view === 'planet' && params.processOn
+                      ? `${formatProcessTime(planetStats?.process?.time ?? 0)}/${formatProcessTime(planetStats?.process?.total ?? 210)}`
+                      : view === 'planet'
                       ? Math.round(params.planetDetail ?? 64)
                       : Math.round(params.resolution)}
               </b>
@@ -1449,7 +1934,7 @@ function World({ user, onLeaveGuest }) {
         />
         </div>
 
-        {view !== 'break' && panels.noise ? (
+        {view !== 'break' && view !== 'skin' && panels.noise ? (
           view === 'csg' ? (
             <DensitySlice
               params={params}
@@ -1464,7 +1949,7 @@ function World({ user, onLeaveGuest }) {
               onHide={() => togglePanel('noise')}
             />
           )
-        ) : view !== 'break' ? (
+        ) : view !== 'break' && view !== 'skin' ? (
           <button type="button" className="dock-tab is-noise" onClick={() => togglePanel('noise')}>
             {view === 'csg' ? 'Density' : view === 'planet' ? '2D Map' : '2D Noise'}
           </button>
@@ -1475,11 +1960,42 @@ function World({ user, onLeaveGuest }) {
             params={params}
             stats={planetStats}
             onChange={bind}
+            onPatch={(partial) => {
+              if (partial.processOn) {
+                setTalkOpen(false)
+                setLookOpen(false)
+                setUfoOpen(false)
+                setInspectOn(false)
+                setPanels((current) => ({ ...current, process: true }))
+              }
+              commit({ ...params, ...partial })
+            }}
             onHide={() => togglePanel('debug')}
           />
         ) : view === 'planet' ? (
           <button type="button" className="dock-tab is-debug" onClick={() => togglePanel('debug')}>
             Debug
+          </button>
+        ) : null}
+
+        {view === 'planet' && panels.process ? (
+          <ProcessFilm
+            params={params}
+            stats={planetStats}
+            onPatch={(partial) => {
+              if (partial.processOn) {
+                setTalkOpen(false)
+                setLookOpen(false)
+                setUfoOpen(false)
+                setInspectOn(false)
+              }
+              commit({ ...params, ...partial })
+            }}
+            onHide={() => togglePanel('process')}
+          />
+        ) : view === 'planet' ? (
+          <button type="button" className="dock-tab is-process" onClick={() => togglePanel('process')}>
+            Process
           </button>
         ) : null}
 
@@ -1512,6 +2028,8 @@ function World({ user, onLeaveGuest }) {
           />
         ) : view === 'planet' && ufoOpen ? (
           <UfoTalk onHide={() => setUfoOpen(false)} />
+        ) : view === 'planet' && inspectOn ? (
+          <InspectPanel pick={planetStats?.inspect} onHide={() => setInspectOn(false)} />
         ) : null}
 
         {panels.controls ? (
@@ -1532,6 +2050,13 @@ function World({ user, onLeaveGuest }) {
               onChange={bind}
               onPulse={pulseBreakAction}
               onReset={resetBreak}
+            />
+          ) : view === 'skin' ? (
+            <SkinControls
+              params={params}
+              stats={skinStats}
+              onChange={bind}
+              onPatch={(partial) => commit({ ...params, ...partial })}
             />
           ) : (
           <>
@@ -2169,7 +2694,7 @@ function World({ user, onLeaveGuest }) {
             </button>
           </div>
           </PanelSection>
-          ) : view === 'planet' ? null : (
+          ) : view === 'planet' || view === 'skin' ? null : (
           <PanelSection title="Grid" note="Mesh density on the xz plane" defaultOpen={false}>
           <Slider
             label="Resolution"

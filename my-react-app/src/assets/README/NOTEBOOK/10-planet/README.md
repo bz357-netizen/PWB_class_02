@@ -28,6 +28,14 @@ Settlement has to follow the ground. **Stepped** only changes the color. The mes
 
 The look starts from Messenger. Roads as a painted mask, toon ink, a walker. The land rule comes from **SimCity** and **Cities: Skylines**: a town is a road network on dry ground, not props on a picture. Full list: [[README_Final Project#References]].
 
+## Process film
+
+Dock tab **Process**. Tiny Glade-style reveal of this planet. The world is already built. Play turns layers on in order: wire sphere → height → color → sea → roads → houses → trees → lamps and cars → UFO → walker → hold. **3:30 at 1×.** Pause, rate, scrub, record a WebM. Hide puts the panel away. Full write-up: [[README_Final Project#11 November]].
+
+## Debug
+
+Dock tab **Debug**. Four clicks: **1. Land**, **2. Height**, **3. Roads**, **4. Refused**. The cream box says what you are looking at. Axes, Grid, Wire, Sites, and Walker are extra helpers. **What is still hard** uses this planet’s mesh time, town time, and refuse counts. Same write-up: [[README_Final Project#11 November]].
+
 ## Code
 
-`planet.js`, `PlanetCanvas.jsx`, `planetTown.js`, `planetWalker.js`.
+`planet.js`, `PlanetCanvas.jsx`, `planetTown.js`, `planetWalker.js`, `worldProcess.js`, `ProcessFilm.jsx`, `debugLayers.js`, `worldReport.js`.

@@ -15,6 +15,7 @@ export function createTownParams() {
     planetTrees: 0.5,
     planetCars: 5,
     planetTownSeed: 1,
+    seedLock: true,
   }
 }
 
@@ -262,8 +263,18 @@ export function createPlanetTown({ gradientMap, makeInk }) {
   const cars = []
   const walls = []
   const trunks = []
-  const sites = { houses: [], trees: [], lamps: [] }
-  const counts = { towns: 0, roads: 0, houses: 0, lamps: 0, trees: 0 }
+  const sites = { houses: [], trees: [], lamps: [], refused: [] }
+  const counts = {
+    towns: 0,
+    roads: 0,
+    houses: 0,
+    lamps: 0,
+    trees: 0,
+    tried: 0,
+    refused: 0,
+    unusedTowns: 0,
+  }
+  const network = { lines: new Float32Array(0), nodes: new Float32Array(0), unused: new Float32Array(0) }
 
   const paintMask = (nodes, width) => {
     const [asphalt, dash, paving] = canvases.map((canvas) => {
@@ -364,11 +375,18 @@ export function createPlanetTown({ gradientMap, makeInk }) {
     sites.houses.length = 0
     sites.trees.length = 0
     sites.lamps.length = 0
+    sites.refused.length = 0
     counts.towns = 0
     counts.roads = 0
     counts.houses = 0
     counts.lamps = 0
     counts.trees = 0
+    counts.tried = 0
+    counts.refused = 0
+    counts.unusedTowns = 0
+    network.lines = new Float32Array(0)
+    network.nodes = new Float32Array(0)
+    network.unused = new Float32Array(0)
 
     if (params.planetRoads === false) {
       clearMask()
@@ -501,14 +519,33 @@ export function createPlanetTown({ gradientMap, makeInk }) {
 
     const houses = []
     const houseAmount = params.planetHouses ?? 0.6
+    const markRefuse = (dir, reason) => {
+      counts.refused += 1
+      if (sites.refused.length >= 280) return
+      const r = groundRadius(dir, params, surface)
+      sites.refused.push({ x: dir.x * r, y: dir.y * r, z: dir.z * r, reason })
+    }
     const tryHouse = (dir) => {
-      if (!clearOfRoads(dir, width / 2 + 0.7)) return
-      if (houses.some((h) => h.angleTo(dir) * PLANET_RADIUS < 1.45)) return
+      counts.tried += 1
+      if (!clearOfRoads(dir, width / 2 + 0.7)) {
+        markRefuse(dir, 'road')
+        return
+      }
+      if (houses.some((h) => h.angleTo(dir) * PLANET_RADIUS < 1.45)) {
+        markRefuse(dir, 'crowd')
+        return
+      }
       const road = nearestRoad(dir)
-      if (!road || road.angleTo(dir) * PLANET_RADIUS > width / 2 + 2.2) return
+      if (!road || road.angleTo(dir) * PLANET_RADIUS > width / 2 + 2.2) {
+        markRefuse(dir, 'far')
+        return
+      }
       towardTangent(dir, road, forward)
       const scale = 0.9 + rng() * 0.28
-      if (!houseFootprintClear(dir, forward, scale, params, surface)) return
+      if (!houseFootprintClear(dir, forward, scale, params, surface)) {
+        markRefuse(dir, 'water')
+        return
+      }
       const r = groundRadius(dir, params, surface) - HOUSE_SINK
       const wall = WALL_COLORS[Math.floor(rng() * WALL_COLORS.length)]
       const roofColor = ROOF_COLORS[Math.floor(rng() * ROOF_COLORS.length)]
@@ -570,6 +607,19 @@ export function createPlanetTown({ gradientMap, makeInk }) {
     counts.houses = kinds.walls.n
     counts.lamps = kinds.lamps.n
     counts.trees = kinds.trunks.n
+    counts.unusedTowns = nodes.filter((node) => !node.used).length
+
+    const lift = (dir) => {
+      const r = groundRadius(dir, params, surface) + 0.06
+      return [dir.x * r, dir.y * r, dir.z * r]
+    }
+    const segs = []
+    for (const edge of edges) {
+      for (let k = 1; k < edge.pts.length; k++) segs.push(...lift(edge.pts[k - 1]), ...lift(edge.pts[k]))
+    }
+    network.lines = new Float32Array(segs)
+    network.nodes = new Float32Array(nodes.filter((node) => node.used).flatMap((node) => lift(node.dir)))
+    network.unused = new Float32Array(nodes.filter((node) => !node.used).flatMap((node) => lift(node.dir)))
 
     for (const kind of Object.values(kinds)) if (kind !== kinds.cars) finish(kind)
   }
@@ -761,5 +811,97 @@ export function createPlanetTown({ gradientMap, makeInk }) {
     roadTexture.dispose()
   }
 
-  return { root, roadTexture, walls, trunks, cars, sites, counts, build, update, syncCars, placeAt, dispose }
+  const inspectMeshes = () =>
+    [
+      kinds.walls.mesh,
+      kinds.walls.ink,
+      kinds.roofs.mesh,
+      kinds.roofs.ink,
+      kinds.doors.mesh,
+      kinds.doors.ink,
+      kinds.trunks.mesh,
+      kinds.trunks.ink,
+      kinds.canopies.mesh,
+      kinds.canopies.ink,
+      kinds.lamps.mesh,
+      kinds.lamps.ink,
+      kinds.cars.mesh,
+      kinds.cars.ink,
+    ].filter(Boolean)
+
+  const identifyPick = (object, instanceId) => {
+    const index = instanceId ?? 0
+    if (
+      object === kinds.walls.mesh ||
+      object === kinds.walls.ink ||
+      object === kinds.roofs.mesh ||
+      object === kinds.roofs.ink ||
+      object === kinds.doors.mesh ||
+      object === kinds.doors.ink
+    ) {
+      return { type: 'house', index, mesh: kinds.walls.mesh }
+    }
+    if (
+      object === kinds.trunks.mesh ||
+      object === kinds.trunks.ink ||
+      object === kinds.canopies.mesh ||
+      object === kinds.canopies.ink
+    ) {
+      return { type: 'tree', index, mesh: kinds.trunks.mesh }
+    }
+    if (object === kinds.lamps.mesh || object === kinds.lamps.ink) {
+      return { type: 'lamp', index, mesh: kinds.lamps.mesh }
+    }
+    if (object === kinds.cars.mesh || object === kinds.cars.ink) {
+      return { type: 'car', index, mesh: kinds.cars.mesh }
+    }
+    return null
+  }
+
+  const showKind = (kind, on) => {
+    if (!kind?.mesh) return
+    kind.mesh.visible = on
+    if (kind.ink) kind.ink.visible = on
+  }
+
+  const setProcess = (mask) => {
+    if (!mask) {
+      showKind(kinds.walls, true)
+      showKind(kinds.roofs, true)
+      showKind(kinds.doors, true)
+      showKind(kinds.trunks, true)
+      showKind(kinds.canopies, true)
+      showKind(kinds.lamps, true)
+      showKind(kinds.cars, true)
+      root.visible = true
+      return
+    }
+    showKind(kinds.walls, mask.houses === true)
+    showKind(kinds.roofs, mask.houses === true)
+    showKind(kinds.doors, mask.houses === true)
+    showKind(kinds.trunks, mask.trees === true)
+    showKind(kinds.canopies, mask.trees === true)
+    showKind(kinds.lamps, mask.lamps === true)
+    showKind(kinds.cars, mask.cars === true)
+    root.visible = Boolean(mask.houses || mask.trees || mask.lamps || mask.cars)
+  }
+
+  return {
+    root,
+    roadTexture,
+    walls,
+    trunks,
+    cars,
+    sites,
+    counts,
+    build,
+    update,
+    syncCars,
+    placeAt,
+    inspectMeshes,
+    identifyPick,
+    setProcess,
+    network,
+    dispose,
+  }
 }

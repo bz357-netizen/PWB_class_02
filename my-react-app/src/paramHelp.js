@@ -148,6 +148,16 @@ export const PARAM_HELP = {
     'How many cars drive the roads. At each town they pick a new road at random. A hit from the robot stops a car or knocks it off the asphalt.',
   planetAgentLook:
     'Messenger clothes: left and right arrows cycle head, body, legs, and feet. Feet is the pair of boots (calves plus soles), so both sides stay a match. Each slot is a toon color, not a new mesh. The factory look is the stock robot.',
+  skinRate:
+    'Clock speed. 1 is real time. Below 1 is slow motion. The mixer still ticks at 1/30 s, so a recorded tape matches what you saw.',
+  processRate:
+    'Clock of the process film. 1 is the 3:30 talk. Below 1 is slow motion. Record captures the planet plus the captions as a WebM.',
+  skinClipTime:
+    'Time inside the current clip, like a video playhead. Drag to freeze and jump. This is not the recorded tape — use Scrub for that.',
+  skinScrub:
+    'Replay of captured ticks. Record while it moves, Pause, then drag here to walk cause and effect backwards and forwards.',
+  skinBend:
+    'Extra rotation on the selected joint, in degrees, added on top of the clip. X bends, Y turns, Z rolls. A yellow mark sits on the bone. Reset pose clears every joint.',
   planetAgentSize:
     'Height of the robot in world units. Default 0.5 is about 5% of the planet radius, so houses and trees stand taller than the person, as on Messenger.',
   planetAgentSpeed:

@@ -25,6 +25,8 @@ import {
   defaultAgentLook,
 } from './planetAgent.js'
 import { MAX_CARS, createTownParams } from './planetTown.js'
+import { createSkinParams } from './skinStudio.js'
+import { createProcessParams } from './worldProcess.js'
 import { db } from './firebase.js'
 
 const AGENT_DEFAULTS = { ...createAgentParams(), ...createTownParams() }
@@ -63,6 +65,7 @@ function restoreAgent(source) {
     planetAgentMode: oneOf(source.planetAgentMode, AGENT_MODE_IDS, AGENT_DEFAULTS.planetAgentMode),
     planetAgentEmote: null,
     planetRoads: source.planetRoads !== false,
+    seedLock: source.seedLock !== false,
     planetAgentLook: restoreLook(source.planetAgentLook),
   }
   for (const [key, range] of Object.entries(AGENT_RANGES)) {
@@ -190,6 +193,7 @@ export function snapshotParams(params) {
       planetAgentMode: params.planetAgentMode,
       planetAgentLook: params.planetAgentLook ?? defaultAgentLook(),
       planetRoads: params.planetRoads !== false,
+      seedLock: params.seedLock !== false,
       ...Object.fromEntries(Object.keys(AGENT_RANGES).map((key) => [key, params[key]])),
       planetSpin: params.planetSpin,
       planetStepped: params.planetStepped === true,
@@ -243,6 +247,8 @@ export function restoreParams(saved, base) {
     planetRelief: num(source.planetRelief, base.planetRelief ?? 0.55, 0, 1.5),
     ...restoreOcean(source),
     ...restoreAgent(source),
+    ...createSkinParams(),
+    ...createProcessParams(),
     planetSpin: num(source.planetSpin, base.planetSpin ?? 0.2, 0, 1),
     planetStepped: source.planetStepped === true,
     planetStops: restoreStops(source.planetStops, base.planetStops),

@@ -19,7 +19,7 @@ This is the index the area notes call **All areas**. The live site is [https://p
 | [09 Shaders](src/assets/README/NOTEBOOK/09-shaders/README.md) | Readings of a surface that already exists |
 | [10 Planet](src/assets/README/NOTEBOOK/10-planet/README.md) | Wrapping the stack onto a ball, color bands, dry settlement |
 
-Sessions: [16 September](src/assets/README/NOTEBOOK/sessions/0916_Vexel&Firebase.md), [30 September](src/assets/README/NOTEBOOK/sessions/0930_Shaders.md).
+Sessions: [16 September](src/assets/README/NOTEBOOK/sessions/0916_Vexel&Firebase.md), [30 September](src/assets/README/NOTEBOOK/sessions/0930_Shaders.md). 11 November is in [Final project](README_Final%20Project.md#11-november).
 
 ## Run
 
